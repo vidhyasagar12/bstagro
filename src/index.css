@@ -1,0 +1,29 @@
+:root {
+  font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  color-scheme: light;
+  color: #0F172A;
+  background-color: #F8FAFC;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #F8FAFC;
+  color: #0F172A;
+}
+
+/* Force All Input Fields to Always Display Clear Black Text */
+input, select, textarea {
+  color: #0F172A !important;
+  background-color: #FFFFFF !important;
+  caret-color: #056835 !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #64748B !important;
+  opacity: 1 !important;
+}
