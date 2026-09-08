@@ -76,11 +76,17 @@ export function App() {
     try {
       const token = localStorage.getItem('bst_agro_token');
       const data = await api.getProducts(token);
-      if (Array.isArray(data) && data.length > 0) {
-        setProducts(data);
+      if (Array.isArray(data)) {
+        setProducts(prevProducts => {
+          if (JSON.stringify(prevProducts) === JSON.stringify(data)) {
+            return prevProducts;
+          }
+          return data;
+        });
       }
     } catch (err) {
-      console.warn('API unavailable, falling back to local dataset:', err);
+      console.warn('API unavailable, using empty catalog:', err);
+      setProducts(prev => (prev.length === 0 ? prev : []));
     }
   };
 
@@ -88,11 +94,21 @@ export function App() {
   const loadAdminData = async () => {
     try {
       const [custData, ordData] = await Promise.all([
-        api.getCustomers().catch(() => INITIAL_CUSTOMERS),
+        api.getCustomers().catch(() => []),
         api.getOrders().catch(() => [])
       ]);
-      if (Array.isArray(custData)) setCustomers(custData);
-      if (Array.isArray(ordData)) setOrders(ordData);
+      if (Array.isArray(custData)) {
+        setCustomers(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(custData)) return prev;
+          return custData;
+        });
+      }
+      if (Array.isArray(ordData)) {
+        setOrders(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(ordData)) return prev;
+          return ordData;
+        });
+      }
     } catch (err) {
       console.warn('Error loading admin data from backend API:', err);
     }
@@ -125,44 +141,115 @@ export function App() {
     }
   }, [customers, currentCustomer]);
 
-  // Product Counts per Brand
+  // Dynamic Available Brands derived from real-time products in database
+  const availableBrands = useMemo(() => {
+    const brandMap = new Map();
+
+    // Always include "All Companies"
+    brandMap.set('all', {
+      id: "all",
+      name: "All Companies",
+      logoBadge: "🏢 All Brands",
+      isOwnBrand: false,
+      bgColor: "#056835",
+      textColor: "#ffffff"
+    });
+
+    products.forEach(p => {
+      if (!p.brand) return;
+      const bId = p.brandId || p.brand.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!brandMap.has(bId)) {
+        const preset = BRANDS.find(b => b.id === bId || b.name.toLowerCase() === p.brand.toLowerCase());
+        if (preset) {
+          brandMap.set(bId, preset);
+        } else {
+          brandMap.set(bId, {
+            id: bId,
+            name: p.brand,
+            logoBadge: `🏢 ${p.brand}`,
+            isOwnBrand: p.isOwnBrand || p.brand.toLowerCase().includes('bst'),
+            bgColor: "#056835",
+            textColor: "#ffffff",
+            description: `${p.brand} Products`
+          });
+        }
+      }
+    });
+
+    return Array.from(brandMap.values());
+  }, [products]);
+
+  // Dynamic Available Categories derived from real-time products in database
+  const availableCategories = useMemo(() => {
+    const catsSet = new Set(['All Categories']);
+    products.forEach(p => {
+      if (p.category && p.category.trim() !== '') {
+        catsSet.add(p.category.trim());
+      }
+    });
+    return Array.from(catsSet);
+  }, [products]);
+
+  // Reset selected filters if selected item is no longer present
+  useEffect(() => {
+    if (selectedBrand !== 'all' && !availableBrands.some(b => b.id === selectedBrand)) {
+      setSelectedBrand('all');
+    }
+  }, [availableBrands, selectedBrand]);
+
+  useEffect(() => {
+    if (selectedCategory !== 'All Categories' && !availableCategories.includes(selectedCategory)) {
+      setSelectedCategory('All Categories');
+    }
+  }, [availableCategories, selectedCategory]);
+
+  // Product Counts per Brand (for available brands)
   const productCounts = useMemo(() => {
     const counts = { all: products.length };
-    BRANDS.forEach(b => {
+    availableBrands.forEach(b => {
       if (b.id !== 'all') {
-        counts[b.id] = products.filter(p => p.brandId === b.id).length;
+        counts[b.id] = products.filter(p => p.brandId === b.id || p.brand === b.name).length;
       }
     });
     return counts;
-  }, [products]);
+  }, [products, availableBrands]);
 
-  // Product Counts per Category
+  // Product Counts per Category (for available categories)
   const categoryCounts = useMemo(() => {
     const counts = { 'All Categories': products.length };
-    CATEGORIES.forEach(cat => {
+    availableCategories.forEach(cat => {
       if (cat !== 'All Categories') {
         counts[cat] = products.filter(p => p.category === cat).length;
       }
     });
     return counts;
-  }, [products]);
+  }, [products, availableCategories]);
+
+  // Selected Brand Object
+  const selectedBrandObj = useMemo(() => {
+    return availableBrands.find(b => b.id === selectedBrand);
+  }, [availableBrands, selectedBrand]);
 
   // Filtered Products List
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      if (selectedBrand !== 'all' && p.brandId !== selectedBrand) return false;
+      if (selectedBrand !== 'all') {
+        const matchesId = p.brandId === selectedBrand;
+        const matchesName = selectedBrandObj && p.brand === selectedBrandObj.name;
+        if (!matchesId && !matchesName) return false;
+      }
       if (selectedCategory !== 'All Categories' && p.category !== selectedCategory) return false;
       if (searchTerm.trim() !== '') {
         const query = searchTerm.toLowerCase();
         const matchName = p.name.toLowerCase().includes(query);
         const matchBrand = p.brand.toLowerCase().includes(query);
         const matchCat = p.category.toLowerCase().includes(query);
-        const matchDesc = p.description.toLowerCase().includes(query);
+        const matchDesc = p.description ? p.description.toLowerCase().includes(query) : false;
         return matchName || matchBrand || matchCat || matchDesc;
       }
       return true;
     });
-  }, [products, selectedBrand, selectedCategory, searchTerm]);
+  }, [products, selectedBrand, selectedCategory, searchTerm, selectedBrandObj]);
 
   // Cart Actions
   const handleAddToCart = (product) => {
@@ -231,13 +318,41 @@ export function App() {
     }
   };
 
+  // Admin: Add New Product
+  const handleAddProduct = async (productData) => {
+    try {
+      await api.createProduct(productData);
+      await loadProducts();
+    } catch (err) {
+      console.error('Error creating product:', err);
+    }
+  };
+
+  // Admin: Update Existing Product
+  const handleUpdateProduct = async (productId, productData) => {
+    try {
+      await api.updateProduct(productId, productData);
+      await loadProducts();
+    } catch (err) {
+      console.error('Error updating product:', err);
+    }
+  };
+
+  // Admin: Delete Product
+  const handleDeleteProduct = async (productId) => {
+    try {
+      await api.deleteProduct(productId);
+      await loadProducts();
+    } catch (err) {
+      console.error('Error deleting product:', err);
+    }
+  };
+
   const cartCount = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const cartTotal = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-  const selectedBrandObj = BRANDS.find(b => b.id === selectedBrand);
-
-  const bstPaneerItem = products.find(p => p.id === 'bst-paneer-1kg') || products[0];
-  const bstPaneerPrice = getEffectivePrice(bstPaneerItem, currentCustomer);
+  const bstPaneerItem = products.find(p => p.id === 'bst-paneer-1kg') || products[0] || null;
+  const bstPaneerPrice = bstPaneerItem ? getEffectivePrice(bstPaneerItem, currentCustomer) : 0;
 
   const handleLogoutCustomer = () => {
     setCurrentCustomer(null);
@@ -256,7 +371,11 @@ export function App() {
         onUpdateCustomerCustomPrice={handleUpdateCustomerCustomPrice}
         onAddCustomer={handleAddCustomer}
         onUpdateBasePrice={handleUpdateBasePrice}
+        onAddProduct={handleAddProduct}
+        onUpdateProduct={handleUpdateProduct}
+        onDeleteProduct={handleDeleteProduct}
         onRefreshAdminData={loadAdminData}
+        onRefreshProducts={loadProducts}
         onBackToStore={() => {
           localStorage.removeItem('bst_agro_admin_token');
           window.location.hash = '';
@@ -288,6 +407,7 @@ export function App() {
         selectedBrand={selectedBrand}
         setSelectedBrand={setSelectedBrand}
         productCounts={productCounts}
+        brands={availableBrands}
       />
 
       {/* Hero Banner */}
@@ -304,12 +424,13 @@ export function App() {
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
           categoryCounts={categoryCounts}
+          categories={availableCategories}
         />
 
         {/* Right Main Content */}
         <main>
-          {/* BST Paneer Main Company Feature Card (Show when default view) */}
-          {selectedBrand === 'all' && selectedCategory === 'All Categories' && !searchTerm && (
+          {/* BST Paneer Main Company Feature Card (Show when default view and product exists) */}
+          {selectedBrand === 'all' && selectedCategory === 'All Categories' && !searchTerm && bstPaneerItem && (
             <div className="bst-flagship-spotlight">
               <div className="spotlight-left">
                 <div className="spotlight-tag">
@@ -407,6 +528,7 @@ export function App() {
                 currentCustomer={currentCustomer}
                 selectedCategory={selectedCategory}
                 searchTerm={searchTerm}
+                brands={availableBrands}
               />
             ) : (
               <div className="product-grid">

@@ -1,6 +1,5 @@
 import React from 'react';
-import { CATEGORIES } from '../data/products';
-import { Layers, CheckCircle } from 'lucide-react';
+import { Layers } from 'lucide-react';
 
 const CATEGORY_ICONS = {
   "All Categories": "🛍️",
@@ -13,7 +12,7 @@ const CATEGORY_ICONS = {
   "Beverages & Pulps": "🍇"
 };
 
-export const CategorySidebar = ({ selectedCategory, setSelectedCategory, categoryCounts }) => {
+export const CategorySidebar = ({ selectedCategory, setSelectedCategory, categoryCounts, categories = ['All Categories'] }) => {
   return (
     <aside className="category-sidebar">
       <div className="sidebar-title">
@@ -22,9 +21,11 @@ export const CategorySidebar = ({ selectedCategory, setSelectedCategory, categor
       </div>
 
       <ul className="sidebar-list">
-        {CATEGORIES.map(cat => {
+        {categories.map(cat => {
           const isActive = selectedCategory === cat;
-          const count = categoryCounts[cat] || 0;
+          const count = categoryCounts[cat] !== undefined 
+            ? categoryCounts[cat] 
+            : (cat === 'All Categories' ? (categoryCounts['All Categories'] || 0) : 0);
           const icon = CATEGORY_ICONS[cat] || "📦";
 
           return (

@@ -2,10 +2,21 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import fs from 'fs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const dbPath = path.resolve(__dirname, '../bst_agro.db');
+// Data Directory Support for Render Persistent Disks or Local Development
+const dataDir = process.env.DATA_DIR 
+  ? path.resolve(process.env.DATA_DIR) 
+  : path.resolve(__dirname, '..');
+
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+
+const dbPath = path.join(dataDir, 'bst_agro.db');
 const db = new Database(dbPath);
 
 // Enable Foreign Key constraints

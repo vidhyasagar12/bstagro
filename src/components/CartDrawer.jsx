@@ -33,8 +33,11 @@ export const CartDrawer = ({
 
   const totalPrice = cartItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
-  const handleSendWhatsAppOrder = async (e) => {
-    e.preventDefault();
+  const handleSendWhatsAppOrder = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (cartItems.length === 0) return;
 
     const shopTitle = customerForm.shopName || (currentCustomer ? currentCustomer.shopName : 'Direct Customer');
@@ -57,7 +60,9 @@ export const CartDrawer = ({
               `----------------------------------------\n` +
               `Please confirm stock availability and dispatch time. Thank you!`;
 
-    // Record order in Express SQLite database
+    const whatsappUrl = `https://wa.me/919949694030?text=${encodeURIComponent(msg)}`;
+
+    // Record order in Express SQLite database concurrently
     const orderData = {
       customerId: currentCustomer ? currentCustomer.id : null,
       shopName: shopTitle,
@@ -68,18 +73,18 @@ export const CartDrawer = ({
       totalAmount: totalPrice
     };
 
-    try {
-      await onRecordNewOrder(orderData);
-    } catch (err) {
-      console.error('Failed to log order to database:', err);
+    if (onRecordNewOrder) {
+      onRecordNewOrder(orderData).catch(err => {
+        console.error('Failed to log order to database:', err);
+      });
     }
 
-    // Refresh & reset cart after order placement
+    // Reset local cart & close drawer
     onClearCart();
     onClose();
 
-    const whatsappUrl = `https://wa.me/919949694030?text=${encodeURIComponent(msg)}`;
-    window.open(whatsappUrl, '_blank');
+    // Redirect to WhatsApp - location.href is universally supported on mobile (iOS/Android) & bypasses popup blockers
+    window.location.href = whatsappUrl;
   };
 
   return (
@@ -103,7 +108,7 @@ export const CartDrawer = ({
             )}
           </div>
 
-          <button onClick={onClose} style={{ background: '#E2E8F0', padding: '6px', borderRadius: '50%' }}>
+          <button type="button" onClick={onClose} style={{ background: '#E2E8F0', padding: '6px', borderRadius: '50%', border: 'none', cursor: 'pointer' }}>
             <X size={18} color="#0F172A" />
           </button>
         </div>
@@ -117,10 +122,10 @@ export const CartDrawer = ({
               <p style={{ fontSize: '0.9rem' }}>Browse BST fresh dairy products and click "+ ADD" to select items.</p>
             </div>
           ) : (
-            <>
+            <div>
               {cartItems.map((item) => (
                 <div key={item.id} className="cart-item">
-                  <img src={item.imageUrl} alt={item.name} className="cart-item-img" />
+                  <img src={item.imageUrl || item.image} alt={item.name} className="cart-item-img" />
                   <div style={{ flex: 1 }}>
                     <h4 style={{ fontSize: '0.92rem', fontWeight: '800', color: '#0F172A' }}>{item.name}</h4>
                     <span style={{ fontSize: '0.78rem', color: '#056835', fontWeight: '700' }}>{item.brand} • {item.packSize}</span>
@@ -130,19 +135,19 @@ export const CartDrawer = ({
                   </div>
 
                   <div className="qty-controller">
-                    <button className="qty-btn" onClick={() => onUpdateQty(item.id, item.qty - 1)}>-</button>
+                    <button type="button" className="qty-btn" onClick={() => onUpdateQty(item.id, item.qty - 1)}>-</button>
                     <span className="qty-val">{item.qty}</span>
-                    <button className="qty-btn" onClick={() => onUpdateQty(item.id, item.qty + 1)}>+</button>
+                    <button type="button" className="qty-btn" onClick={() => onUpdateQty(item.id, item.qty + 1)}>+</button>
                   </div>
 
-                  <button onClick={() => onRemoveItem(item.id)} style={{ background: 'transparent', color: '#EF4444', padding: '4px' }} title="Remove item">
+                  <button type="button" onClick={() => onRemoveItem(item.id)} style={{ background: 'transparent', color: '#EF4444', padding: '4px', border: 'none', cursor: 'pointer' }} title="Remove item">
                     <Trash2 size={18} />
                   </button>
                 </div>
               ))}
 
               {/* Customer / Shop Details Form */}
-              <form style={{ marginTop: '1.5rem', background: '#F8FAFC', padding: '1.1rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+              <div style={{ marginTop: '1.5rem', background: '#F8FAFC', padding: '1.1rem', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
                 <h4 style={{ fontSize: '0.9rem', fontWeight: '800', color: '#056835', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <Building2 size={18} />
                   <span>Step 2: Verify Shop / Hotel Details</span>
@@ -191,8 +196,8 @@ export const CartDrawer = ({
                     onChange={(e) => setCustomerForm({...customerForm, address: e.target.value})}
                   ></textarea>
                 </div>
-              </form>
-            </>
+              </div>
+            </div>
           )}
         </div>
 
@@ -206,6 +211,7 @@ export const CartDrawer = ({
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               <button 
+                type="button"
                 onClick={handleSendWhatsAppOrder}
                 style={{
                   width: '100%',
@@ -219,7 +225,9 @@ export const CartDrawer = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.5rem',
-                  boxShadow: '0 4px 14px rgba(37, 211, 102, 0.35)'
+                  boxShadow: '0 4px 14px rgba(37, 211, 102, 0.35)',
+                  border: 'none',
+                  cursor: 'pointer'
                 }}
               >
                 <MessageCircle size={20} />

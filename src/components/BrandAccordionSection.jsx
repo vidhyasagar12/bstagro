@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { BRANDS } from '../data/products';
 import { ProductCard } from './ProductCard';
-import { ChevronDown, ChevronUp, Building2, Layers, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Building2 } from 'lucide-react';
 
 export const BrandAccordionSection = ({ 
   filteredProducts, 
@@ -11,7 +10,8 @@ export const BrandAccordionSection = ({
   setQuickViewProduct, 
   currentCustomer,
   selectedCategory,
-  searchTerm
+  searchTerm,
+  brands = []
 }) => {
   // State for expanded brands (BST Agro expanded by default: 'bst')
   const [expandedBrands, setExpandedBrands] = useState({
@@ -27,7 +27,7 @@ export const BrandAccordionSection = ({
 
   const expandAll = () => {
     const allExpanded = {};
-    BRANDS.forEach(b => {
+    brands.forEach(b => {
       if (b.id !== 'all') allExpanded[b.id] = true;
     });
     setExpandedBrands(allExpanded);
@@ -37,7 +37,7 @@ export const BrandAccordionSection = ({
     setExpandedBrands({});
   };
 
-  const nonAllBrands = BRANDS.filter(b => b.id !== 'all');
+  const nonAllBrands = brands.filter(b => b.id !== 'all');
 
   return (
     <div className="brand-accordion-wrapper">
@@ -59,7 +59,7 @@ export const BrandAccordionSection = ({
 
       <div className="brand-accordion-container">
         {nonAllBrands.map(brand => {
-          const brandProducts = filteredProducts.filter(p => p.brandId === brand.id);
+          const brandProducts = filteredProducts.filter(p => p.brandId === brand.id || p.brand === brand.name);
           if (brandProducts.length === 0) return null;
 
           // If search or specific category filter active, auto-expand

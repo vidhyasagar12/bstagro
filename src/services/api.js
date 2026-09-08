@@ -91,6 +91,52 @@ export const api = {
     return data;
   },
 
+  // Admin: Create New Product
+  async createProduct(productData) {
+    const res = await fetch(`${API_BASE}/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(productData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create product');
+    return data;
+  },
+
+  // Admin: Update Existing Product
+  async updateProduct(productId, productData) {
+    const res = await fetch(`${API_BASE}/products/${productId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(productData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update product');
+    return data;
+  },
+
+  // Admin: Delete Product
+  async deleteProduct(productId) {
+    const res = await fetch(`${API_BASE}/products/${productId}`, {
+      method: 'DELETE'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to delete product');
+    return data;
+  },
+
+  // Admin: Upload Product Image (Base64)
+  async uploadProductImage(imageData, filename) {
+    const res = await fetch(`${API_BASE}/products/upload-image`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageData, filename })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to upload image');
+    return data;
+  },
+
   // Submit New Wholesale Order
   async createOrder(orderData) {
     const res = await fetch(`${API_BASE}/orders`, {

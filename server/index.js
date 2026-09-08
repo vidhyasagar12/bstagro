@@ -14,9 +14,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS & Body Parsing
+// Enable CORS & Body Parsing (10mb limit for image uploads)
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Initialize Database & Seed initial dataset if empty
 try {
@@ -46,6 +46,19 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/orders', orderRoutes);
+
+import fs from 'fs';
+
+// Serve uploaded product images (Render persistent storage or local public/uploads)
+const uploadsPath = process.env.DATA_DIR 
+  ? path.join(process.env.DATA_DIR, 'uploads')
+  : path.join(__dirname, '../public/uploads');
+
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+}
+
+app.use('/uploads', express.static(uploadsPath));
 
 // Serve static build assets (Vite React app) in production
 const distPath = path.join(__dirname, '../dist');

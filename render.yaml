@@ -1,0 +1,16 @@
+# Render.com Infrastructure Blueprint
+services:
+  - type: web
+    name: bst-agro-ecommerce
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /var/data
+    disk:
+      name: bst-data
+      mountPath: /var/data
+      sizeGB: 1

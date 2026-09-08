@@ -2,7 +2,7 @@ import React from 'react';
 import { Plus, Minus, MessageCircle, Star } from 'lucide-react';
 import { getEffectivePrice } from '../data/customers';
 
-export const ProductCard = ({ 
+export const ProductCard = React.memo(({ 
   product, 
   cartQty, 
   onAddToCart, 
@@ -17,6 +17,8 @@ export const ProductCard = ({
   const productWhatsappUrl = "https://wa.me/919949694030?text=" + encodeURIComponent(
     `Hello Bhaskar Reddy, order request from *${shopName}*:\n- *Product:* ${product.name}\n- *Brand:* ${product.brand}\n- *Pack Size:* ${product.packSize}\n- *Price:* ₹${effectivePrice}\n\nPlease confirm availability.`
   );
+
+  const imgSrc = product.imageUrl || product.image;
 
   return (
     <div className={`product-card ${product.isOwnBrand ? 'is-bst-brand' : ''}`}>
@@ -38,10 +40,9 @@ export const ProductCard = ({
       {/* Product Image */}
       <div className="product-img-wrapper" onClick={() => onQuickView(product)} title="Click for details">
         <img 
-          src={product.imageUrl} 
+          src={imgSrc} 
           alt={product.name} 
           className="product-img"
-          loading="lazy"
         />
       </div>
 
@@ -115,4 +116,4 @@ export const ProductCard = ({
       </div>
     </div>
   );
-};
+});
