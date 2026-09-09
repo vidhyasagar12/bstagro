@@ -1,4 +1,23 @@
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+
+async function handleResponse(res, defaultErrorMsg = 'API Request Failed') {
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    if (!res.ok) {
+      throw new Error(`Server Error (${res.status}): Please check backend deployment at ${API_BASE}`);
+    }
+    throw new Error('Invalid JSON response received from API server.');
+  }
+
+  if (!res.ok) {
+    throw new Error(data.error || defaultErrorMsg);
+  }
+
+  return data;
+}
 
 export const api = {
   // Fetch Products Catalog (Server evaluates customer custom prices if token is provided)
@@ -8,8 +27,7 @@ export const api = {
       headers['Authorization'] = `Bearer ${token}`;
     }
     const res = await fetch(`${API_BASE}/products`, { headers });
-    if (!res.ok) throw new Error('Failed to fetch products');
-    return res.json();
+    return handleResponse(res, 'Failed to fetch products');
   },
 
   // Customer Shop Login
@@ -19,9 +37,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, pin })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Login failed');
-    return data;
+    return handleResponse(res, 'Login failed');
   },
 
   // Customer Shop Self-Registration
@@ -31,9 +47,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(customerData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Registration failed');
-    return data;
+    return handleResponse(res, 'Registration failed');
   },
 
   // Admin PIN Verification
@@ -43,16 +57,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminPin })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Admin verification failed');
-    return data;
+    return handleResponse(res, 'Admin verification failed');
   },
 
   // Admin: Get All Customers with Custom Prices
   async getCustomers() {
     const res = await fetch(`${API_BASE}/customers`);
-    if (!res.ok) throw new Error('Failed to fetch customers');
-    return res.json();
+    return handleResponse(res, 'Failed to fetch customers');
   },
 
   // Admin: Add New Shop Account
@@ -62,9 +73,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(customerData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to add customer');
-    return data;
+    return handleResponse(res, 'Failed to add customer');
   },
 
   // Admin: Set or Clear Customer Custom Product Price
@@ -74,9 +83,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ productId, customPrice })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update custom price');
-    return data;
+    return handleResponse(res, 'Failed to update custom price');
   },
 
   // Admin: Update Product Base Catalog Price
@@ -86,9 +93,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ price })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update base price');
-    return data;
+    return handleResponse(res, 'Failed to update base price');
   },
 
   // Admin: Create New Product
@@ -98,9 +103,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(productData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to create product');
-    return data;
+    return handleResponse(res, 'Failed to create product');
   },
 
   // Admin: Update Existing Product
@@ -110,9 +113,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(productData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update product');
-    return data;
+    return handleResponse(res, 'Failed to update product');
   },
 
   // Admin: Delete Product
@@ -120,9 +121,7 @@ export const api = {
     const res = await fetch(`${API_BASE}/products/${productId}`, {
       method: 'DELETE'
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to delete product');
-    return data;
+    return handleResponse(res, 'Failed to delete product');
   },
 
   // Admin: Upload Product Image (Base64)
@@ -132,9 +131,7 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageData, filename })
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to upload image');
-    return data;
+    return handleResponse(res, 'Failed to upload image');
   },
 
   // Submit New Wholesale Order
@@ -144,15 +141,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(orderData)
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to submit order');
-    return data;
+    return handleResponse(res, 'Failed to submit order');
   },
 
   // Admin: Get Order History
   async getOrders() {
     const res = await fetch(`${API_BASE}/orders`);
-    if (!res.ok) throw new Error('Failed to fetch orders');
-    return res.json();
+    return handleResponse(res, 'Failed to fetch orders');
   }
 };
