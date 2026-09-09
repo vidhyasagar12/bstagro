@@ -216,16 +216,34 @@ router.put('/:id/base-price', async (req, res) => {
 // Admin Delete Product
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
+  const cleanId = (id || '').trim();
 
-  await supabase.from('custom_prices').delete().eq('productid', id).catch(() => {});
-  await supabase.from('custom_prices').delete().eq('productId', id).catch(() => {});
-
-  const { error } = await supabase.from('products').delete().eq('id', id);
-  if (error) {
-    return res.status(400).json({ error: error.message });
+  if (!cleanId) {
+    return res.status(400).json({ error: 'Product ID is required.' });
   }
 
-  return res.json({ success: true, id });
+  if (isSupabaseConfigured) {
+    try {
+      // 1. Delete associated custom prices
+      await supabase.from('custom_prices').delete().eq('productid', cleanId);
+      await supabase.from('custom_prices').delete().eq('productId', cleanId);
+
+      // 2. Delete product from products table
+      const { data: delData, error: delErr } = await supabase.from('products').delete().eq('id', cleanId).select();
+      
+      if (delErr) {
+        console.error('❌ Supabase Delete Error:', delErr);
+        return res.status(400).json({ error: `Supabase Delete Error: ${delErr.message}` });
+      }
+
+      console.log('✅ Product deleted from Supabase:', cleanId, delData);
+    } catch (err) {
+      console.error('❌ Delete exception:', err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  return res.json({ success: true, id: cleanId });
 });
 
 // Upload Product Image (Direct to Supabase Storage)

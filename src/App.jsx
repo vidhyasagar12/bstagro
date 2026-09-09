@@ -352,6 +352,7 @@ export function App() {
   // Admin: Delete Product
   const handleDeleteProduct = async (productId) => {
     try {
+      await api.deleteProduct(productId);
       setProducts(prev => {
         const filtered = prev.filter(p => p.id !== productId);
         try {
@@ -359,10 +360,11 @@ export function App() {
         } catch (e) {}
         return filtered;
       });
-      await api.deleteProduct(productId);
       await loadProducts();
     } catch (err) {
       console.error('Error deleting product:', err);
+      alert(`Delete Error: ${err.message || 'Failed to delete product from Supabase database'}`);
+      await loadProducts();
     }
   };
 
