@@ -1,10 +1,11 @@
 import express from 'express';
 import db from '../db.js';
+import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
 
 const router = express.Router();
 
 // Record New Wholesale Order Endpoint
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { customerId, shopName, ownerName, phone, address, totalAmount, items } = req.body;
 
   if (!shopName || !phone || !items || !Array.isArray(items) || items.length === 0) {
@@ -15,71 +16,60 @@ router.post('/', (req, res) => {
   const cleanTotal = Math.max(0, parseFloat(totalAmount) || 0);
   const itemsJsonStr = JSON.stringify(items);
 
-  db.prepare(`
-    INSERT INTO orders (id, customerId, shopName, ownerName, phone, address, totalAmount, itemsJson, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Submitted')
-  `).run(orderId, customerId || null, shopName, ownerName || '', phone, address || '', cleanTotal, itemsJsonStr);
-
-// Helper: Send Telegram Bot Notification if TELEGRAM_BOT_TOKEN & TELEGRAM_CHAT_ID are set
-const sendTelegramOrderNotification = async (order) => {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-  if (!botToken || !chatId) return;
-
-  const itemsList = order.items.map(it => `• ${it.name} x ${it.qty} = ₹${it.price * it.qty}`).join('\n');
-  const message = `🔔 *NEW ORDER RECEIVED - BST AGRO*
-
-🏢 *Shop*: ${order.shopName}
-👤 *Owner*: ${order.ownerName || 'Customer'}
-📞 *Phone*: ${order.phone}
-📍 *Address*: ${order.address || 'Standard Address'}
-💰 *Total Amount*: ₹${order.totalAmount}
-
-📦 *Items*:
-${itemsList}`;
-
-  try {
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-        parse_mode: 'Markdown'
-      })
-    });
-  } catch (err) {
-    console.warn('Telegram notification failed:', err.message);
-  }
-};
-
   const newOrder = {
     id: orderId,
-    customerId,
-    shopName,
-    ownerName,
-    phone,
-    address,
+    customerPhone: phone,
+    items: itemsJsonStr,
     totalAmount: cleanTotal,
-    items,
     status: 'Submitted',
     createdAt: new Date().toISOString()
   };
 
-  // Trigger optional Telegram push notification
-  sendTelegramOrderNotification(newOrder);
+  try {
+    db.prepare(`
+      INSERT INTO orders (id, customerId, shopName, ownerName, phone, address, totalAmount, itemsJson, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Submitted')
+    `).run(orderId, customerId || null, shopName, ownerName || '', phone, address || '', cleanTotal, itemsJsonStr);
+  } catch (e) {
+    console.warn('SQLite order insert warning:', e);
+  }
 
-  return res.json({ success: true, order: newOrder });
+  if (isSupabaseConfigured) {
+    await supabase.from('orders').upsert([newOrder]);
+  }
+
+  const returnedOrder = {
+    ...newOrder,
+    shopName,
+    ownerName,
+    phone,
+    address,
+    items
+  };
+
+  return res.json({ success: true, order: returnedOrder });
 });
 
 // Admin Get Order History
-router.get('/', (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders ORDER BY createdAt DESC').all();
+router.get('/', async (req, res) => {
+  let orders = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data } = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
+      orders = data || db.prepare('SELECT * FROM orders ORDER BY createdAt DESC').all();
+    } catch (err) {
+      console.warn('Supabase orders fetch fallback to SQLite:', err.message);
+      orders = db.prepare('SELECT * FROM orders ORDER BY createdAt DESC').all();
+    }
+  } else {
+    orders = db.prepare('SELECT * FROM orders ORDER BY createdAt DESC').all();
+  }
 
   const formattedOrders = orders.map(ord => {
     let items = [];
     try {
-      items = JSON.parse(ord.itemsJson);
+      items = typeof ord.items === 'string' ? JSON.parse(ord.items) : (ord.items || JSON.parse(ord.itemsJson || '[]'));
     } catch (e) {
       items = [];
     }

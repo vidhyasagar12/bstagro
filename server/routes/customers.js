@@ -1,12 +1,31 @@
 import express from 'express';
 import db from '../db.js';
+import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
 
 const router = express.Router();
 
 // Admin Get All Customers with Custom Prices Map
-router.get('/', (req, res) => {
-  const customers = db.prepare('SELECT * FROM customers ORDER BY createdAt DESC').all();
-  const allCustomPrices = db.prepare('SELECT customerId, productId, customPrice FROM custom_prices').all();
+router.get('/', async (req, res) => {
+  let customers = [];
+  let allCustomPrices = [];
+
+  if (isSupabaseConfigured) {
+    try {
+      const [{ data: custData }, { data: cpData }] = await Promise.all([
+        supabase.from('customers').select('*').order('createdAt', { ascending: false }),
+        supabase.from('custom_prices').select('*')
+      ]);
+      customers = custData || db.prepare('SELECT * FROM customers ORDER BY createdAt DESC').all();
+      allCustomPrices = cpData || db.prepare('SELECT customerId, productId, customPrice FROM custom_prices').all();
+    } catch (err) {
+      console.warn('Supabase DB customers fetch fallback to SQLite:', err.message);
+      customers = db.prepare('SELECT * FROM customers ORDER BY createdAt DESC').all();
+      allCustomPrices = db.prepare('SELECT customerId, productId, customPrice FROM custom_prices').all();
+    }
+  } else {
+    customers = db.prepare('SELECT * FROM customers ORDER BY createdAt DESC').all();
+    allCustomPrices = db.prepare('SELECT customerId, productId, customPrice FROM custom_prices').all();
+  }
 
   const priceMapByCustomer = {};
   allCustomPrices.forEach(row => {
@@ -24,31 +43,8 @@ router.get('/', (req, res) => {
   return res.json(fullCustomers);
 });
 
-// Supabase DB Sync Helper
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-async function syncSupabase(table, method, body, query = '') {
-  if (!supabaseUrl || !supabaseKey) return;
-  try {
-    const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/${table}${query}`;
-    await fetch(url, {
-      method,
-      headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
-        'apiKey': supabaseKey,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates,return=minimal'
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-  } catch (err) {
-    console.warn(`⚠️ Supabase sync warning (${table}):`, err.message);
-  }
-}
-
 // Admin Add New Shop Account
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   const { shopName, ownerName, phone, pin, businessType, address } = req.body;
 
   if (!shopName || !ownerName || !phone || !pin) {
@@ -57,7 +53,12 @@ router.post('/', (req, res) => {
 
   const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
 
-  const existing = db.prepare('SELECT id FROM customers WHERE phone = ?').get(cleanPhone);
+  let existing = db.prepare('SELECT id FROM customers WHERE phone = ?').get(cleanPhone);
+  if (!existing && isSupabaseConfigured) {
+    const { data } = await supabase.from('customers').select('id').eq('phone', cleanPhone).maybeSingle();
+    existing = data;
+  }
+
   if (existing) {
     return res.status(400).json({ error: 'A shop account with this phone number already exists.' });
   }
@@ -73,19 +74,25 @@ router.post('/', (req, res) => {
     address: address || '',
   };
 
-  db.prepare(`
-    INSERT INTO customers (id, shopName, ownerName, phone, pin, businessType, address)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(newId, newCustomer.shopName, newCustomer.ownerName, cleanPhone, newCustomer.pin, newCustomer.businessType, newCustomer.address);
+  try {
+    db.prepare(`
+      INSERT INTO customers (id, shopName, ownerName, phone, pin, businessType, address)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(newId, newCustomer.shopName, newCustomer.ownerName, cleanPhone, newCustomer.pin, newCustomer.businessType, newCustomer.address);
+  } catch (e) {
+    console.warn('SQLite customer insert warning:', e);
+  }
 
-  // Sync to Supabase Postgres Database
-  syncSupabase('customers', 'POST', newCustomer);
+  if (isSupabaseConfigured) {
+    const { error: sbErr } = await supabase.from('customers').upsert([newCustomer]);
+    if (sbErr) console.error('Supabase customer insert error:', sbErr);
+  }
 
   return res.json({ success: true, customer: { ...newCustomer, customPrices: {} } });
 });
 
 // Admin Set or Remove Custom Item Price for a Customer
-router.put('/:id/custom-price', (req, res) => {
+router.put('/:id/custom-price', async (req, res) => {
   const { id } = req.params;
   const { productId, customPrice } = req.body;
 
@@ -93,37 +100,48 @@ router.put('/:id/custom-price', (req, res) => {
     return res.status(400).json({ error: 'Product ID is required.' });
   }
 
-  // Check customer exists
-  const customer = db.prepare('SELECT id FROM customers WHERE id = ?').get(id);
-  if (!customer) {
-    return res.status(404).json({ error: 'Customer not found.' });
-  }
+  const cpId = `cp-${id}-${productId}`;
 
-  // If customPrice is null/undefined or empty string, remove custom rate
   if (customPrice === undefined || customPrice === null || customPrice === '') {
     db.prepare('DELETE FROM custom_prices WHERE customerId = ? AND productId = ?').run(id, productId);
-    syncSupabase('custom_prices', 'DELETE', null, `?customerId=eq.${id}&productId=eq.${productId}`);
+    if (isSupabaseConfigured) {
+      await supabase.from('custom_prices').delete().eq('customerId', id).eq('productId', productId);
+    }
   } else {
     const cleanPrice = Math.max(0, parseFloat(customPrice) || 0);
     const cpObj = {
-      id: `cp-${id}-${productId}`,
+      id: cpId,
       customerId: id,
       productId,
       customPrice: cleanPrice
     };
-    db.prepare(`
-      INSERT INTO custom_prices (id, customerId, productId, customPrice, updatedAt)
-      VALUES (?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(customerId, productId) DO UPDATE SET
-        customPrice = excluded.customPrice,
-        updatedAt = datetime('now')
-    `).run(cpObj.id, id, productId, cleanPrice);
 
-    syncSupabase('custom_prices', 'POST', cpObj);
+    try {
+      db.prepare(`
+        INSERT INTO custom_prices (id, customerId, productId, customPrice, updatedAt)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(customerId, productId) DO UPDATE SET
+          customPrice = excluded.customPrice,
+          updatedAt = datetime('now')
+      `).run(cpId, id, productId, cleanPrice);
+    } catch (e) {
+      console.warn('SQLite custom price insert warning:', e);
+    }
+
+    if (isSupabaseConfigured) {
+      await supabase.from('custom_prices').upsert([cpObj]);
+    }
   }
 
   // Return updated customer custom prices map
-  const updatedPricesRows = db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(id);
+  let updatedPricesRows = [];
+  if (isSupabaseConfigured) {
+    const { data } = await supabase.from('custom_prices').select('productId, customPrice').eq('customerId', id);
+    updatedPricesRows = data || db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(id);
+  } else {
+    updatedPricesRows = db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(id);
+  }
+
   const updatedPricesMap = {};
   updatedPricesRows.forEach(row => {
     updatedPricesMap[row.productId] = row.customPrice;
