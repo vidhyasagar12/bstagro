@@ -352,6 +352,13 @@ export function App() {
   // Admin: Delete Product
   const handleDeleteProduct = async (productId) => {
     try {
+      setProducts(prev => {
+        const filtered = prev.filter(p => p.id !== productId);
+        try {
+          localStorage.setItem('bst_ecommerce_products_cache', JSON.stringify(filtered));
+        } catch (e) {}
+        return filtered;
+      });
       await api.deleteProduct(productId);
       await loadProducts();
     } catch (err) {
