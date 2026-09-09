@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, safeSupabaseUpsert } from '../supabaseClient.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'bst-agro-secret-key-2026';
@@ -32,7 +32,7 @@ router.post('/login', async (req, res) => {
 
     const customer = {
       id: String(raw.id),
-      shopName: raw.shopName || raw.shop_name || '',
+      shopName: raw.shopName || raw.shop_name || raw.name || '',
       ownerName: raw.ownerName || raw.owner_name || '',
       phone: String(raw.phone || ''),
       pin: String(raw.pin || ''),
@@ -122,7 +122,7 @@ router.post('/register', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Try snake_case payload (PostgreSQL standard)
+    // 1. Try snake_case payload with column pruning
     const snakeCustomer = {
       id: newId,
       shop_name: newCustomer.shopName,
@@ -134,11 +134,11 @@ router.post('/register', async (req, res) => {
       created_at: newCustomer.createdAt
     };
 
-    let { error: insertErr } = await supabase.from('customers').upsert([snakeCustomer]);
+    let { error: insertErr } = await safeSupabaseUpsert('customers', snakeCustomer);
 
-    // 2. Fallback to camelCase payload if snake_case fails
+    // 2. Fallback to camelCase payload with column pruning if snake_case fails completely
     if (insertErr) {
-      const { error: fallbackErr } = await supabase.from('customers').upsert([newCustomer]);
+      const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
       if (fallbackErr) {
         return res.status(500).json({ error: `Failed to save customer to Supabase: ${insertErr.message} | ${fallbackErr.message}` });
       }

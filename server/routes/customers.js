@@ -1,5 +1,5 @@
 import express from 'express';
-import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, safeSupabaseUpsert } from '../supabaseClient.js';
 
 const router = express.Router();
 
@@ -8,7 +8,7 @@ function normalizeCustomer(c) {
   if (!c) return null;
   return {
     id: String(c.id),
-    shopName: c.shopName || c.shop_name || '',
+    shopName: c.shopName || c.shop_name || c.name || '',
     ownerName: c.ownerName || c.owner_name || '',
     phone: String(c.phone || ''),
     pin: String(c.pin || ''),
@@ -108,9 +108,9 @@ router.post('/', async (req, res) => {
       created_at: newCustomer.createdAt
     };
 
-    let { error: insertErr } = await supabase.from('customers').upsert([snakeCustomer]);
+    let { error: insertErr } = await safeSupabaseUpsert('customers', snakeCustomer);
     if (insertErr) {
-      const { error: fallbackErr } = await supabase.from('customers').upsert([newCustomer]);
+      const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
       if (fallbackErr) {
         return res.status(500).json({ error: `Failed to insert customer: ${insertErr.message} | ${fallbackErr.message}` });
       }
@@ -158,9 +158,9 @@ router.put('/:id/custom-price', async (req, res) => {
         custom_price: cleanPrice
       };
 
-      let { error: upsertErr } = await supabase.from('custom_prices').upsert([cpObjSnake]);
+      let { error: upsertErr } = await safeSupabaseUpsert('custom_prices', cpObjSnake);
       if (upsertErr) {
-        const { error: fallbackErr } = await supabase.from('custom_prices').upsert([cpObjCamel]);
+        const { error: fallbackErr } = await safeSupabaseUpsert('custom_prices', cpObjCamel);
         if (fallbackErr) {
           return res.status(500).json({ error: `Failed to save custom price: ${upsertErr.message} | ${fallbackErr.message}` });
         }

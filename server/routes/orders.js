@@ -1,5 +1,5 @@
 import express from 'express';
-import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, safeSupabaseUpsert } from '../supabaseClient.js';
 
 const router = express.Router();
 
@@ -46,10 +46,9 @@ router.post('/', async (req, res) => {
   };
 
   try {
-    let { error: sbErr1 } = await supabase.from('orders').upsert([snakeOrder]);
+    let { error: sbErr1 } = await safeSupabaseUpsert('orders', snakeOrder);
     if (sbErr1) {
-      console.warn('Supabase order insert warning (snake_case):', sbErr1.message);
-      const { error: sbErr2 } = await supabase.from('orders').upsert([newOrder]);
+      const { error: sbErr2 } = await safeSupabaseUpsert('orders', newOrder);
       if (sbErr2) {
         return res.status(500).json({ error: `Failed to insert order: ${sbErr1.message} | ${sbErr2.message}` });
       }
