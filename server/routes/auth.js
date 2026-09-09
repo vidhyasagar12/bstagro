@@ -20,14 +20,37 @@ router.post('/login', async (req, res) => {
   if (isSupabaseConfigured) {
     try {
       const { data } = await supabase.from('customers').select('*').eq('phone', cleanPhone).maybeSingle();
-      customer = data;
+      if (data) {
+        customer = {
+          id: String(data.id),
+          shopName: data.shopName || data.shop_name || '',
+          ownerName: data.ownerName || data.owner_name || '',
+          phone: String(data.phone || ''),
+          pin: String(data.pin || ''),
+          businessType: data.businessType || data.business_type || 'Restaurant / Hotel',
+          address: data.address || ''
+        };
+      }
     } catch (err) {
       console.warn('Supabase login check fallback to SQLite:', err.message);
     }
   }
 
   if (!customer) {
-    customer = db.prepare('SELECT * FROM customers WHERE phone = ?').get(cleanPhone);
+    try {
+      const raw = db.prepare('SELECT * FROM customers WHERE phone = ?').get(cleanPhone);
+      if (raw) {
+        customer = {
+          id: String(raw.id),
+          shopName: raw.shopName || raw.shop_name || '',
+          ownerName: raw.ownerName || raw.owner_name || '',
+          phone: String(raw.phone || ''),
+          pin: String(raw.pin || ''),
+          businessType: raw.businessType || raw.business_type || 'Restaurant / Hotel',
+          address: raw.address || ''
+        };
+      }
+    } catch (e) {}
   }
 
   if (!customer || String(customer.pin).trim() !== pin.trim()) {
@@ -37,15 +60,28 @@ router.post('/login', async (req, res) => {
   // Fetch customer custom prices
   let customPricesRows = [];
   if (isSupabaseConfigured) {
-    const { data: cpData } = await supabase.from('custom_prices').select('productId, customPrice').eq('customerId', customer.id);
-    customPricesRows = cpData || db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(customer.id);
-  } else {
-    customPricesRows = db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(customer.id);
+    try {
+      const { data: cpData } = await supabase.from('custom_prices').select('*').eq('customerId', customer.id);
+      customPricesRows = cpData || [];
+      if (customPricesRows.length === 0) {
+        const { data: cpDataSnake } = await supabase.from('custom_prices').select('*').eq('customer_id', customer.id);
+        customPricesRows = cpDataSnake || [];
+      }
+    } catch (e) {}
+  }
+  if (customPricesRows.length === 0) {
+    try {
+      customPricesRows = db.prepare('SELECT customerId, productId, customPrice FROM custom_prices WHERE customerId = ?').all(customer.id);
+    } catch (e) {}
   }
 
   const customPrices = {};
   customPricesRows.forEach(row => {
-    customPrices[row.productId] = row.customPrice;
+    const pId = row.productId || row.product_id;
+    const pVal = row.customPrice || row.custom_price;
+    if (pId && pVal !== undefined) {
+      customPrices[pId] = pVal;
+    }
   });
 
   const fullCustomer = {
@@ -76,10 +112,16 @@ router.post('/register', async (req, res) => {
 
   const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
 
-  let existing = db.prepare('SELECT id FROM customers WHERE phone = ?').get(cleanPhone);
+  let existing = null;
+  try {
+    existing = db.prepare('SELECT id FROM customers WHERE phone = ?').get(cleanPhone);
+  } catch (e) {}
+
   if (!existing && isSupabaseConfigured) {
-    const { data } = await supabase.from('customers').select('id').eq('phone', cleanPhone).maybeSingle();
-    existing = data;
+    try {
+      const { data } = await supabase.from('customers').select('id').eq('phone', cleanPhone).maybeSingle();
+      existing = data;
+    } catch (e) {}
   }
 
   if (existing) {
@@ -95,19 +137,43 @@ router.post('/register', async (req, res) => {
     pin: pin.trim(),
     businessType: businessType || 'Restaurant / Hotel',
     address: address || '',
+    createdAt: new Date().toISOString()
   };
 
+  // 1. Save to SQLite
   try {
     db.prepare(`
       INSERT INTO customers (id, shopName, ownerName, phone, pin, businessType, address)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(newId, newCustomer.shopName, newCustomer.ownerName, cleanPhone, newCustomer.pin, newCustomer.businessType, newCustomer.address);
   } catch (e) {
-    console.warn('SQLite register warning:', e);
+    console.warn('SQLite register insert warning:', e);
   }
 
+  // 2. Save to Supabase (with camelCase & snake_case fallbacks)
   if (isSupabaseConfigured) {
-    await supabase.from('customers').upsert([newCustomer]);
+    try {
+      const { error: sbErr } = await supabase.from('customers').upsert([newCustomer]);
+      if (sbErr) {
+        console.warn('Supabase register upsert warning (camelCase):', sbErr.message);
+        const snakeCustomer = {
+          id: newId,
+          shop_name: newCustomer.shopName,
+          owner_name: newCustomer.ownerName,
+          phone: cleanPhone,
+          pin: newCustomer.pin,
+          business_type: newCustomer.businessType,
+          address: newCustomer.address,
+          created_at: newCustomer.createdAt
+        };
+        const { error: snakeErr } = await supabase.from('customers').upsert([snakeCustomer]);
+        if (snakeErr) {
+          console.error('Supabase register upsert error (snake_case):', snakeErr.message);
+        }
+      }
+    } catch (err) {
+      console.error('Supabase customer register exception:', err.message);
+    }
   }
 
   const token = jwt.sign(
