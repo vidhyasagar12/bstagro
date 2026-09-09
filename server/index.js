@@ -74,7 +74,14 @@ app.use((req, res, next) => {
   res.status(404).json({ error: 'Endpoint not found. Access API via /api/* or frontend at Vercel.' });
 });
 
+// Global Express JSON Error Handler
+app.use((err, req, res, next) => {
+  console.error('❌ Express Global Error:', err);
+  res.status(500).json({ error: err.message || 'Internal Server Error', stack: err.stack });
+});
+
 // Start Express Server
 app.listen(PORT, () => {
   console.log(`🚀 BST Agro & Dairy Production Express Server running on http://localhost:${PORT}`);
 });
+
