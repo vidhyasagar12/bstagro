@@ -27,23 +27,27 @@ export async function safeSupabaseUpsert(table, record) {
   if (!supabase) return { data: null, error: new Error('Supabase client not initialized') };
 
   let currentRecord = { ...record };
+  let lastError = null;
 
   for (let attempt = 0; attempt < 8; attempt++) {
-    const { data, error } = await supabase.from(table).upsert([currentRecord]).select();
+    const { data, error } = await supabase.from(table).upsert([currentRecord]);
     if (!error) {
+      console.log(`✅ safeSupabaseUpsert succeeded for table '${table}'!`);
       return { data, error: null };
     }
+
+    lastError = error;
 
     // Match missing column error from Supabase schema cache
     const missingColMatch = error.message.match(/Could not find the '([^']+)' column/i);
     if (missingColMatch && missingColMatch[1]) {
       const missingCol = missingColMatch[1];
-      console.warn(`⚠️ Supabase table '${table}' missing column '${missingCol}'. Pruning key and retrying...`);
+      console.warn(`⚠️ Supabase table '${table}' missing column '${missingCol}'. Pruning key '${missingCol}' and retrying...`);
       delete currentRecord[missingCol];
     } else {
       return { data: null, error };
     }
   }
 
-  return { data: null, error: new Error('Exhausted column pruning retries for Supabase upsert.') };
+  return { data: null, error: lastError || new Error('Exhausted column pruning retries for Supabase upsert.') };
 }
