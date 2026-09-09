@@ -98,7 +98,9 @@ router.post('/admin-verify', (req, res) => {
     return res.status(400).json({ error: 'Admin PIN is required.' });
   }
 
-  if (adminPin.trim() === '9949694030' || adminPin.trim() === 'admin123' || adminPin.trim() === '1234') {
+  const validAdminPin = process.env.ADMIN_PIN || '9949694030';
+
+  if (adminPin.trim() === validAdminPin) {
     const adminToken = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: '12h' });
     return res.json({ success: true, token: adminToken });
   }
