@@ -33,14 +33,32 @@ router.get('/', async (req, res) => {
     products = db.prepare('SELECT * FROM products').all();
   }
 
-  // Convert flags and format product objects
-  const formattedProducts = products.map(p => ({
-    ...p,
-    inStock: Boolean(p.inStock),
-    isFlagship: Boolean(p.isFlagship),
-    isOwnBrand: p.brandId === 'bst' || (p.brand && p.brand.toLowerCase().includes('bst')),
-    imageUrl: p.image
-  }));
+  // Convert flags and format product objects with robust camelCase & lowercase column mapping
+  const formattedProducts = products.map(p => {
+    const bId = p.brandId || p.brandid || (p.brand ? p.brand.toLowerCase().replace(/[^a-z0-9]/g, '') : 'gen');
+    const img = p.image || p.imageUrl || '';
+    const inStk = p.inStock !== undefined ? p.inStock : (p.instock !== undefined ? p.instock : 1);
+    const isFlag = p.isFlagship !== undefined ? p.isFlagship : (p.isflagship !== undefined ? p.isflagship : 0);
+
+    return {
+      ...p,
+      id: p.id,
+      name: p.name,
+      brand: p.brand,
+      brandId: bId,
+      category: p.category,
+      price: parseFloat(p.price) || 0,
+      packSize: p.packSize || p.packsize || '',
+      image: img,
+      imageUrl: img,
+      description: p.description || '',
+      rating: parseFloat(p.rating) || 4.8,
+      reviews: parseInt(p.reviews) || 45,
+      inStock: Boolean(inStk),
+      isFlagship: Boolean(isFlag),
+      isOwnBrand: bId === 'bst' || (p.brand && p.brand.toLowerCase().includes('bst'))
+    };
+  });
 
   // Check Authorization Header for Customer JWT
   let customerId = null;
@@ -141,9 +159,29 @@ router.post('/', async (req, res) => {
       newProduct.isFlagship
     );
 
-    // 2. Insert into Supabase Cloud Postgres Database
+    // 2. Insert into Supabase Cloud Postgres Database (Supports both lowercase and camelCase PostgreSQL schema)
     if (isSupabaseConfigured) {
-      const { error: sbErr } = await supabase.from('products').upsert([newProduct]);
+      const sbProduct = {
+        id,
+        name: cleanName,
+        brand: cleanBrand,
+        brandid: cleanBrandId,
+        brandId: cleanBrandId,
+        category: cleanCategory,
+        price: cleanPrice,
+        packsize: packSize || '',
+        packSize: packSize || '',
+        image: image || '',
+        description: description || '',
+        rating: 4.8,
+        reviews: 45,
+        instock: newProduct.inStock,
+        inStock: newProduct.inStock,
+        isflagship: newProduct.isFlagship,
+        isFlagship: newProduct.isFlagship
+      };
+
+      const { error: sbErr } = await supabase.from('products').upsert([sbProduct]);
       if (sbErr) {
         console.error('⚠️ Supabase Product Insert Error:', sbErr);
       } else {
