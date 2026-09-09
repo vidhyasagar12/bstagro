@@ -378,8 +378,8 @@ export function App() {
 
   const bstPaneerItem = products.find(p => p.id === 'bst-paneer-1kg') || 
                         products.find(p => (p.brandId === 'bst' || (p.brand && p.brand.toLowerCase().includes('bst'))) && p.name.toLowerCase().includes('paneer')) || 
-                        products.find(p => p.brandId === 'bst' || (p.brand && p.brand.toLowerCase().includes('bst'))) || 
-                        products[0] || null;
+                        products.find(p => p.name && p.name.toLowerCase().includes('paneer')) || 
+                        null;
   const bstPaneerPrice = bstPaneerItem ? getEffectivePrice(bstPaneerItem, currentCustomer) : 250;
 
   const handleLogoutCustomer = () => {

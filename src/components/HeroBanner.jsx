@@ -1,34 +1,54 @@
 import React from 'react';
-import { MessageCircle, PhoneCall, CheckCircle2, Sparkles, Award, ShoppingCart } from 'lucide-react';
+import { MessageCircle, CheckCircle2, Sparkles, Award, ShoppingCart } from 'lucide-react';
 
 export const HeroBanner = ({ 
-  onOpenWholesaleModal, 
   setSelectedBrand, 
   featuredProduct, 
   featuredPrice, 
   onAddToCart 
 }) => {
-  const whatsappUrl = "https://wa.me/919949694030?text=" + encodeURIComponent("Hello Bhaskar Reddy, I want to order BST Fresh Paneer (Our Flagship Item) and get daily delivery details.");
+  const whatsappUrl = "https://wa.me/919949694030?text=" + encodeURIComponent("Hello Bhaskar Reddy, I want to order BST Fresh Cottage Paneer (Our Flagship Item) and get daily delivery details.");
 
-  const displayTitle = featuredProduct?.name || "BST Fresh Cottage Paneer";
-  const displayPrice = (featuredPrice !== undefined && featuredPrice !== null) 
+  // Dedicated 100% to BST Fresh Cottage Paneer branding (only price is dynamic)
+  const displayPrice = (featuredPrice !== undefined && featuredPrice !== null && featuredPrice > 0) 
     ? featuredPrice 
     : (featuredProduct?.price || 250);
-  const displayOriginalPrice = featuredProduct?.price;
-  const displayPackSize = featuredProduct?.packSize || featuredProduct?.packsize || "1 kg Pack";
-  const displayImg = featuredProduct?.imageUrl || featuredProduct?.image || "/bst-paneer.png";
+  
+  const basePrice = featuredProduct?.price;
+
+  const handleBuyClick = () => {
+    if (onAddToCart) {
+      const paneerItem = featuredProduct || {
+        id: 'bst-paneer-1kg',
+        name: 'BST Fresh Cottage Paneer',
+        brand: 'BST Agro & Dairy',
+        brandId: 'bst',
+        category: 'Paneer & Khova',
+        price: displayPrice,
+        packSize: '1 kg Pack',
+        image: '/bst-paneer.png',
+        description: 'Processed daily at our own BST Agro & Dairy plant. 100% Pure Milk Paneer.',
+        inStock: true,
+        isFlagship: true,
+        isOwnBrand: true
+      };
+      onAddToCart(paneerItem);
+    } else {
+      setSelectedBrand('bst');
+    }
+  };
 
   return (
     <div className="ecommerce-hero">
       <div className="hero-card">
-        {/* Left Side: Headline & Features */}
+        {/* Left Side: Static BST Flagship Branding */}
         <div className="hero-left">
           <div className="hero-badge">
             <Award size={16} color="#FACC15" />
             <span>OUR OWN FACTORY FLAGSHIP BRAND</span>
           </div>
 
-          <h1>{displayTitle} <span>100% Pure & Authentic</span></h1>
+          <h1>BST Fresh Cottage Paneer <span>100% Pure & Authentic</span></h1>
 
           <p className="hero-subtitle">
             Processed daily at our own BST Agro & Dairy plant. Soft texture, high protein, rich milk taste — trusted by households, hotels, and top commercial kitchens.
@@ -69,7 +89,7 @@ export const HeroBanner = ({
           </div>
         </div>
 
-        {/* Right Side: Featured Product Packet Showcase */}
+        {/* Right Side: Dedicated BST Paneer Packet Showcase */}
         <div className="hero-product-showcase">
           <div className="showcase-badge">
             <Sparkles size={14} /> #1 BEST SELLER
@@ -77,39 +97,31 @@ export const HeroBanner = ({
           
           <div className="showcase-img-container">
             <img 
-              src={displayImg} 
-              alt={displayTitle} 
+              src="/bst-paneer.png" 
+              alt="BST Fresh Cottage Paneer Packet" 
               className="showcase-paneer-img"
               onError={(e) => { e.target.src = '/bst-paneer.png'; }}
             />
           </div>
 
           <div className="showcase-info">
-            <div className="showcase-title">{displayTitle}</div>
+            <div className="showcase-title">BST Fresh Cottage Paneer</div>
             <div className="showcase-price-tag">
               <span>₹{displayPrice}</span>
-              {displayOriginalPrice && displayOriginalPrice > displayPrice && (
+              {basePrice && basePrice > displayPrice && (
                 <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '0.85em', marginLeft: '6px', color: '#94a3b8' }}>
-                  ₹{displayOriginalPrice}
+                  ₹{basePrice}
                 </span>
               )}
-              <small>/ {displayPackSize}</small>
+              <small>/ 1kg</small>
             </div>
-            {featuredProduct && onAddToCart ? (
-              <button 
-                onClick={() => onAddToCart(featuredProduct)}
-                className="showcase-buy-btn"
-              >
-                <ShoppingCart size={16} /> Add to Cart • ₹{displayPrice}
-              </button>
-            ) : (
-              <button 
-                onClick={() => setSelectedBrand('bst')}
-                className="showcase-buy-btn"
-              >
-                <ShoppingCart size={16} /> View BST Dairy Items
-              </button>
-            )}
+            
+            <button 
+              onClick={handleBuyClick}
+              className="showcase-buy-btn"
+            >
+              <ShoppingCart size={16} /> Add to Cart • ₹{displayPrice}
+            </button>
           </div>
         </div>
       </div>
