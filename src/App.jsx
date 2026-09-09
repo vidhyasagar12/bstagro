@@ -351,22 +351,27 @@ export function App() {
 
   // Admin: Delete Product
   const handleDeleteProduct = async (productId) => {
+    // Optimistically remove from local state immediately
+    setProducts(prev => {
+      const filtered = prev.filter(p => p.id !== productId);
+      try {
+        localStorage.setItem('bst_ecommerce_products_cache', JSON.stringify(filtered));
+      } catch {}
+      return filtered;
+    });
+
     try {
       await api.deleteProduct(productId);
-      setProducts(prev => {
-        const filtered = prev.filter(p => p.id !== productId);
-        try {
-          localStorage.setItem('bst_ecommerce_products_cache', JSON.stringify(filtered));
-        } catch (e) {}
-        return filtered;
-      });
-      await loadProducts();
+      // Delay background sync so UI doesn't flicker/reappear before server confirms
+      setTimeout(() => loadProducts(), 1500);
     } catch (err) {
       console.error('Error deleting product:', err);
-      alert(`Delete Error: ${err.message || 'Failed to delete product from Supabase database'}`);
+      // Restore product list on failure
       await loadProducts();
+      throw err; // re-throw so Admin page can show proper toast error
     }
   };
+
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.qty, 0);
   const cartTotal = cartItems.reduce((sum, item) => sum + (item.price * item.qty), 0);

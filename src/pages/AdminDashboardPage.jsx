@@ -168,6 +168,14 @@ export const AdminDashboardPage = ({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [productSaveStatus, setProductSaveStatus] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null); // product currently being deleted
+
+  // Toast Notification System
+  const [toast, setToast] = useState(null); // { type: 'success'|'error', message: string }
+  const showToast = (type, message) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // Automated Real-Time Background Polling for Live Order Updates (Every 3 seconds)
   useEffect(() => {
@@ -415,11 +423,17 @@ export const AdminDashboardPage = ({
   const handleDeleteProduct = async (e, productId) => {
     if (e && e.preventDefault) e.preventDefault();
     if (e && e.stopPropagation) e.stopPropagation();
+    setDeletingId(productId);
+    setDeleteConfirmId(null);
     try {
-      setDeleteConfirmId(null);
       await onDeleteProduct(productId);
+      showToast('success', '✅ Product deleted successfully!');
     } catch (err) {
       console.error('Error deleting product:', err);
+      const msg = err.message || 'Could not delete. Please check your internet connection and try again.';
+      showToast('error', `❌ Delete failed: ${msg}`);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -436,6 +450,25 @@ export const AdminDashboardPage = ({
 
   return (
     <div style={{ minHeight: '100vh', background: '#F8FAFC', color: '#0F172A', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      {/* ── TOAST NOTIFICATION ── */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: '1.5rem', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9999, minWidth: '280px', maxWidth: '480px',
+          background: toast.type === 'success' ? '#064E3B' : '#7F1D1D',
+          color: '#fff', padding: '0.9rem 1.4rem', borderRadius: '12px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.25)', fontSize: '0.95rem', fontWeight: '700',
+          display: 'flex', alignItems: 'center', gap: '0.75rem',
+          animation: 'slideUpFadeIn 0.3s ease'
+        }}>
+          <span style={{ flex: 1 }}>{toast.message}</span>
+          <button
+            onClick={() => setToast(null)}
+            style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+              borderRadius: '6px', padding: '2px 8px', cursor: 'pointer', fontSize: '1rem', fontWeight: '900' }}
+          >×</button>
+        </div>
+      )}
       {/* Standalone Admin Page Header */}
       <header style={{ background: '#ffffff', borderBottom: '1px solid #E2E8F0', padding: '1rem 2rem', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', sticky: 'top', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
@@ -446,7 +479,7 @@ export const AdminDashboardPage = ({
                 <ShieldCheck size={20} color="#056835" />
                 <h1 style={{ fontSize: '1.15rem', fontWeight: '900', color: '#0F172A' }}>Admin Management Center</h1>
               </div>
-              <span style={{ fontSize: '0.75rem', color: '#056835', fontWeight: '800' }}>🟢 Production SQLite Database Active</span>
+              <span style={{ fontSize: '0.75rem', color: '#056835', fontWeight: '800' }}>🟢 Connected to Supabase Cloud Database</span>
             </div>
           </div>
 
@@ -646,14 +679,20 @@ export const AdminDashboardPage = ({
                               <span>Edit</span>
                             </button>
                             
-                            {deleteConfirmId === p.id ? (
+                            {deletingId === p.id ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.45rem 0.75rem', background: '#FEF2F2', borderRadius: '8px', fontSize: '0.82rem', color: '#991B1B', fontWeight: '800' }}>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: 'spin 0.8s linear infinite' }}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                                Deleting...
+                              </div>
+                            ) : deleteConfirmId === p.id ? (
                               <div style={{ display: 'flex', gap: '0.3rem' }}>
                                 <button 
                                   type="button"
                                   onClick={(e) => handleDeleteProduct(e, p.id)}
-                                  style={{ background: '#EF4444', color: '#fff', border: 'none', padding: '0.45rem 0.75rem', borderRadius: '8px', fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer' }}
+                                  style={{ background: '#EF4444', color: '#fff', border: 'none', padding: '0.45rem 0.75rem', borderRadius: '8px', fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                                 >
-                                  Confirm
+                                  <Trash2 size={13} />
+                                  Yes, Delete
                                 </button>
                                 <button 
                                   type="button"
