@@ -59,14 +59,20 @@ if (!fs.existsSync(uploadsPath)) {
 
 app.use('/uploads', express.static(uploadsPath));
 
-// Serve static build assets (Vite React app) in production
-const distPath = path.join(__dirname, '../dist');
-app.use(express.static(distPath));
+// Root API welcome endpoint (Frontend is hosted on Vercel)
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'BST Agro & Dairy Wholesale Express API',
+    documentation: 'API endpoints available under /api/*',
+    health: '/api/health'
+  });
+});
 
-// Fallback all non-API routes to index.html for SPA client-side routing
+// Fallback for non-API routes
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(distPath, 'index.html'));
+  if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+  res.status(404).json({ error: 'Endpoint not found. Access API via /api/* or frontend at Vercel.' });
 });
 
 // Start Express Server
