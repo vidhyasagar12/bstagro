@@ -11,10 +11,13 @@ router.get('/', async (req, res) => {
 
   if (isSupabaseConfigured) {
     try {
-      const [{ data: custData }, { data: cpData }] = await Promise.all([
-        supabase.from('customers').select('*').order('createdAt', { ascending: false }),
+      const [{ data: custData, error: custErr }, { data: cpData, error: cpErr }] = await Promise.all([
+        supabase.from('customers').select('*'),
         supabase.from('custom_prices').select('*')
       ]);
+      if (custErr) console.warn('Supabase customers fetch error:', custErr.message);
+      if (cpErr) console.warn('Supabase custom_prices fetch error:', cpErr.message);
+      
       customers = custData || db.prepare('SELECT * FROM customers ORDER BY createdAt DESC').all();
       allCustomPrices = cpData || db.prepare('SELECT customerId, productId, customPrice FROM custom_prices').all();
     } catch (err) {

@@ -56,7 +56,8 @@ router.get('/', async (req, res) => {
 
   if (isSupabaseConfigured) {
     try {
-      const { data } = await supabase.from('orders').select('*').order('createdAt', { ascending: false });
+      const { data, error: ordErr } = await supabase.from('orders').select('*');
+      if (ordErr) console.warn('Supabase orders fetch error:', ordErr.message);
       orders = data || db.prepare('SELECT * FROM orders ORDER BY createdAt DESC').all();
     } catch (err) {
       console.warn('Supabase orders fetch fallback to SQLite:', err.message);
