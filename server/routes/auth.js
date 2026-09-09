@@ -122,25 +122,24 @@ router.post('/register', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Try snake_case payload with column pruning
-    const snakeCustomer = {
-      id: newId,
-      shop_name: newCustomer.shopName,
-      owner_name: newCustomer.ownerName,
-      phone: cleanPhone,
-      pin: newCustomer.pin,
-      business_type: newCustomer.businessType,
-      address: newCustomer.address,
-      created_at: newCustomer.createdAt
-    };
+    // 1. Try camelCase payload with auto column-pruning helper
+    let { error: insertErr } = await safeSupabaseUpsert('customers', newCustomer);
 
-    let { error: insertErr } = await safeSupabaseUpsert('customers', snakeCustomer);
-
-    // 2. Fallback to camelCase payload with column pruning if snake_case fails completely
+    // 2. Fallback to snake_case payload if camelCase fails completely
     if (insertErr) {
-      const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
+      const snakeCustomer = {
+        id: newId,
+        shop_name: newCustomer.shopName,
+        owner_name: newCustomer.ownerName,
+        phone: cleanPhone,
+        pin: newCustomer.pin,
+        business_type: newCustomer.businessType,
+        address: newCustomer.address,
+        created_at: newCustomer.createdAt
+      };
+      const { error: fallbackErr } = await safeSupabaseUpsert('customers', snakeCustomer);
       if (fallbackErr) {
-        return res.status(500).json({ error: `Failed to save customer to Supabase: ${insertErr.message} | ${fallbackErr.message}` });
+        return res.status(500).json({ error: `Failed to save customer to Supabase: ${insertErr.message}` });
       }
     }
 
