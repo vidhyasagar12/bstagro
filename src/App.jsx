@@ -560,6 +560,7 @@ export function App() {
                 selectedCategory={selectedCategory}
                 searchTerm={searchTerm}
                 brands={availableBrands}
+                onOpenCart={() => setIsCartOpen(true)}
               />
             ) : (
               <div className="product-grid">
@@ -574,6 +575,7 @@ export function App() {
                       onUpdateQty={handleUpdateQty}
                       onQuickView={setQuickViewProduct}
                       currentCustomer={currentCustomer}
+                      onOpenCart={() => setIsCartOpen(true)}
                     />
                   );
                 })}

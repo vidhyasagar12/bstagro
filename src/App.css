@@ -1132,6 +1132,36 @@ input::placeholder, textarea::placeholder {
   background: var(--whatsapp-hover);
 }
 
+/* Dedicated Go To Cart Button Under Item Card */
+.go-to-cart-card-btn {
+  margin-top: 0.75rem;
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  background: linear-gradient(135deg, #056835 0%, #045229 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-sm, 8px);
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(5, 104, 53, 0.25);
+  transition: all 0.2s ease-in-out;
+}
+
+.go-to-cart-card-btn:hover {
+  background: linear-gradient(135deg, #045229 0%, #033c1e 100%);
+  box-shadow: 0 4px 12px rgba(5, 104, 53, 0.4);
+  transform: translateY(-1px);
+}
+
+.go-to-cart-card-btn:active {
+  transform: translateY(0);
+}
+
 .no-products-box {
   text-align: center;
   padding: 3.5rem 1rem;

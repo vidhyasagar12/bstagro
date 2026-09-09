@@ -11,7 +11,8 @@ export const BrandAccordionSection = ({
   currentCustomer,
   selectedCategory,
   searchTerm,
-  brands = []
+  brands = [],
+  onOpenCart
 }) => {
   // State for collapsed brands (empty by default = ALL BRANDS EXPANDED so products are immediately visible!)
   const [collapsedBrands, setCollapsedBrands] = useState({});
@@ -135,6 +136,7 @@ export const BrandAccordionSection = ({
                           onUpdateQty={handleUpdateQty}
                           onQuickView={setQuickViewProduct}
                           currentCustomer={currentCustomer}
+                          onOpenCart={onOpenCart}
                         />
                       );
                     })}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Minus, MessageCircle, Star } from 'lucide-react';
+import { Plus, Minus, MessageCircle, Star, ShoppingCart, ArrowRight } from 'lucide-react';
 import { getEffectivePrice } from '../data/customers';
 
 export const ProductCard = React.memo(({ 
@@ -8,7 +8,8 @@ export const ProductCard = React.memo(({
   onAddToCart, 
   onUpdateQty, 
   onQuickView,
-  currentCustomer
+  currentCustomer,
+  onOpenCart
 }) => {
   const effectivePrice = getEffectivePrice(product, currentCustomer);
   const isCustomRate = currentCustomer && currentCustomer.customPrices && currentCustomer.customPrices[product.id] !== undefined;
@@ -21,7 +22,7 @@ export const ProductCard = React.memo(({
   const imgSrc = product.imageUrl || product.image;
 
   return (
-    <div className={`product-card ${product.isOwnBrand ? 'is-bst-brand' : ''}`}>
+    <div className={`product-card ${product.isOwnBrand ? 'is-bst-brand' : ''} ${cartQty > 0 ? 'has-item-in-cart' : ''}`}>
       {/* Top Header with Veg Symbol & Brand Badge */}
       <div className="product-card-header">
         {product.isVeg && <div className="veg-symbol" title="100% Pure Vegetarian"></div>}
@@ -113,6 +114,21 @@ export const ProductCard = React.memo(({
             )}
           </div>
         </div>
+
+        {/* Dedicated "Go to Cart" button rendered under item card when added */}
+        {cartQty > 0 && (
+          <button 
+            onClick={onOpenCart}
+            className="go-to-cart-card-btn"
+            title="Open your shopping cart"
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <ShoppingCart size={15} />
+              <span>GO TO CART ({cartQty})</span>
+            </div>
+            <ArrowRight size={15} />
+          </button>
+        )}
       </div>
     </div>
   );
