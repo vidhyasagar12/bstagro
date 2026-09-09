@@ -224,9 +224,9 @@ router.delete('/:id', async (req, res) => {
 
   if (isSupabaseConfigured) {
     try {
-      // 1. Delete associated custom prices
-      await supabase.from('custom_prices').delete().eq('productid', cleanId);
-      await supabase.from('custom_prices').delete().eq('productId', cleanId);
+      // 1. Delete associated custom prices (exact PostgreSQL lowercase column productid)
+      const { error: cpErr } = await supabase.from('custom_prices').delete().eq('productid', cleanId);
+      if (cpErr) console.warn('Supabase custom_prices delete warning:', cpErr.message);
 
       // 2. Delete product from products table
       const { data: delData, error: delErr } = await supabase.from('products').delete().eq('id', cleanId).select();
