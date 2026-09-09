@@ -150,25 +150,25 @@ router.post('/register', async (req, res) => {
     console.warn('SQLite register insert warning:', e);
   }
 
-  // 2. Save to Supabase (with camelCase & snake_case fallbacks)
+  // 2. Save to Supabase (try snake_case first as PostgreSQL defaults to snake_case)
   if (isSupabaseConfigured) {
     try {
-      const { error: sbErr } = await supabase.from('customers').upsert([newCustomer]);
-      if (sbErr) {
-        console.warn('Supabase register upsert warning (camelCase):', sbErr.message);
-        const snakeCustomer = {
-          id: newId,
-          shop_name: newCustomer.shopName,
-          owner_name: newCustomer.ownerName,
-          phone: cleanPhone,
-          pin: newCustomer.pin,
-          business_type: newCustomer.businessType,
-          address: newCustomer.address,
-          created_at: newCustomer.createdAt
-        };
-        const { error: snakeErr } = await supabase.from('customers').upsert([snakeCustomer]);
-        if (snakeErr) {
-          console.error('Supabase register upsert error (snake_case):', snakeErr.message);
+      const snakeCustomer = {
+        id: newId,
+        shop_name: newCustomer.shopName,
+        owner_name: newCustomer.ownerName,
+        phone: cleanPhone,
+        pin: newCustomer.pin,
+        business_type: newCustomer.businessType,
+        address: newCustomer.address,
+        created_at: newCustomer.createdAt
+      };
+      const { error: sbErr1 } = await supabase.from('customers').upsert([snakeCustomer]);
+      if (sbErr1) {
+        console.warn('Supabase register upsert warning (snake_case):', sbErr1.message);
+        const { error: sbErr2 } = await supabase.from('customers').upsert([newCustomer]);
+        if (sbErr2) {
+          console.error('Supabase register upsert error (camelCase):', sbErr2.message);
         }
       }
     } catch (err) {

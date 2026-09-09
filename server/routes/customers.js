@@ -139,26 +139,29 @@ router.post('/', async (req, res) => {
     console.warn('SQLite customer insert warning:', e);
   }
 
-  // Insert/Upsert into Supabase with dual casing support
+  // Insert/Upsert into Supabase (try snake_case first for PostgreSQL column compatibility)
   if (isSupabaseConfigured) {
     try {
-      const { error: sbErr } = await supabase.from('customers').upsert([newCustomer]);
-      if (sbErr) {
-        console.warn('Supabase customer insert warning (camelCase):', sbErr.message);
-        const snakeCustomer = {
-          id: newId,
-          shop_name: newCustomer.shopName,
-          owner_name: newCustomer.ownerName,
-          phone: cleanPhone,
-          pin: newCustomer.pin,
-          business_type: newCustomer.businessType,
-          address: newCustomer.address,
-          created_at: newCustomer.createdAt
-        };
-        await supabase.from('customers').upsert([snakeCustomer]);
+      const snakeCustomer = {
+        id: newId,
+        shop_name: newCustomer.shopName,
+        owner_name: newCustomer.ownerName,
+        phone: cleanPhone,
+        pin: newCustomer.pin,
+        business_type: newCustomer.businessType,
+        address: newCustomer.address,
+        created_at: newCustomer.createdAt
+      };
+      const { error: sbErr1 } = await supabase.from('customers').upsert([snakeCustomer]);
+      if (sbErr1) {
+        console.warn('Supabase customer insert warning (snake_case):', sbErr1.message);
+        const { error: sbErr2 } = await supabase.from('customers').upsert([newCustomer]);
+        if (sbErr2) {
+          console.error('Supabase customer insert error (camelCase):', sbErr2.message);
+        }
       }
     } catch (err) {
-      console.warn('Supabase customer insert error:', err.message);
+      console.warn('Supabase customer insert exception:', err.message);
     }
   }
 
