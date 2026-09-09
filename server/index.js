@@ -45,7 +45,9 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     message: 'BST Agro & Dairy Express API Server Running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    supabase: process.env.SUPABASE_URL ? '✅ configured' : '❌ not configured',
+    node: process.version
   });
 });
 
