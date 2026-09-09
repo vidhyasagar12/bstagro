@@ -1,6 +1,5 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import db from '../db.js';
 import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
 import fs from 'fs';
 import path from 'path';
@@ -13,28 +12,19 @@ const __dirname = path.dirname(__filename);
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'bst-agro-secret-key-2026';
 
-// Get All Products (Primary: Supabase Cloud Postgres / Fallback: SQLite)
+// Get All Products (Direct from Supabase Cloud Postgres)
 router.get('/', async (req, res) => {
-  let products = [];
-
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error } = await supabase.from('products').select('*');
-      if (!error && Array.isArray(data) && data.length > 0) {
-        products = data;
-      } else {
-        products = db.prepare('SELECT * FROM products').all();
-      }
-    } catch (err) {
-      console.warn('Supabase DB fetch fallback to SQLite:', err.message);
-      products = db.prepare('SELECT * FROM products').all();
-    }
-  } else {
-    products = db.prepare('SELECT * FROM products').all();
+  if (!isSupabaseConfigured) {
+    return res.status(500).json({ error: 'Supabase credentials not configured in server environment.' });
   }
 
-  // Convert flags and format product objects with robust camelCase & lowercase column mapping
-  const formattedProducts = products.map(p => {
+  const { data, error } = await supabase.from('products').select('*');
+  if (error) {
+    console.error('Supabase GET /products error:', error);
+    return res.status(400).json({ error: error.message, details: error.details || error.hint });
+  }
+
+  const formattedProducts = (data || []).map(p => {
     const bId = p.brandId || p.brandid || (p.brand ? p.brand.toLowerCase().replace(/[^a-z0-9]/g, '') : 'gen');
     const img = p.image || p.imageUrl || '';
     const inStk = p.inStock !== undefined ? p.inStock : (p.instock !== undefined ? p.instock : 1);
@@ -75,19 +65,15 @@ router.get('/', async (req, res) => {
     }
   }
 
-  // If authenticated customer, attach their custom prices if configured
   if (customerId) {
-    let customPrices = [];
-    if (isSupabaseConfigured) {
-      const { data: cpData } = await supabase.from('custom_prices').select('productId, customPrice').eq('customerId', customerId);
-      customPrices = cpData || db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(customerId);
-    } else {
-      customPrices = db.prepare('SELECT productId, customPrice FROM custom_prices WHERE customerId = ?').all(customerId);
-    }
+    const { data: cpData } = await supabase.from('custom_prices').select('*');
+    const customPrices = (cpData || []).filter(cp => (cp.customerId || cp.customerid) === customerId);
 
     const priceMap = {};
     customPrices.forEach(cp => {
-      priceMap[cp.productId] = cp.customPrice;
+      const pId = cp.productId || cp.productid;
+      const cPrice = cp.customPrice || cp.customprice;
+      priceMap[pId] = cPrice;
     });
 
     const evaluatedProducts = formattedProducts.map(p => {
@@ -107,12 +93,16 @@ router.get('/', async (req, res) => {
   return res.json(formattedProducts);
 });
 
-// Admin: Create New Product
+// Admin: Create New Product (100% Direct to Supabase)
 router.post('/', async (req, res) => {
   const { name, brand, brandId, category, price, packSize, image, description, inStock, isFlagship } = req.body;
 
   if (!name || !brand || price === undefined) {
     return res.status(400).json({ error: 'Product name, company/brand name, and price are required.' });
+  }
+
+  if (!isSupabaseConfigured) {
+    return res.status(500).json({ error: 'Supabase credentials not configured in server environment.' });
   }
 
   const id = req.body.id || `prod-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
@@ -122,7 +112,32 @@ router.post('/', async (req, res) => {
   const cleanBrandId = (brandId || cleanBrand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
   const cleanPrice = Math.max(0, parseFloat(price) || 0);
 
-  const newProduct = {
+  const sbProduct = {
+    id,
+    name: cleanName,
+    brand: cleanBrand,
+    brandid: cleanBrandId,
+    category: cleanCategory,
+    price: cleanPrice,
+    packsize: packSize || '',
+    image: image || '',
+    description: description || '',
+    rating: 4.8,
+    reviews: 45,
+    instock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
+    isflagship: isFlagship ? 1 : 0
+  };
+
+  const { data, error } = await supabase.from('products').upsert([sbProduct]).select();
+
+  if (error) {
+    console.error('Supabase POST /products error:', error);
+    return res.status(400).json({ error: `Supabase Error: ${error.message}`, details: error.details || error.hint });
+  }
+
+  console.log('✅ Product saved directly to Supabase:', data);
+  return res.status(201).json({
+    success: true,
     id,
     name: cleanName,
     brand: cleanBrand,
@@ -131,150 +146,55 @@ router.post('/', async (req, res) => {
     price: cleanPrice,
     packSize: packSize || '',
     image: image || '',
+    imageUrl: image || '',
     description: description || '',
-    rating: 4.8,
-    reviews: 45,
-    inStock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
-    isFlagship: isFlagship ? 1 : 0
-  };
-
-  try {
-    // 1. Insert into SQLite (Local Backup)
-    db.prepare(`
-      INSERT INTO products (id, name, brand, brandId, category, price, packSize, image, description, rating, reviews, inStock, isFlagship)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      cleanName,
-      cleanBrand,
-      cleanBrandId,
-      cleanCategory,
-      cleanPrice,
-      packSize || '',
-      image || '',
-      description || '',
-      4.8,
-      45,
-      newProduct.inStock,
-      newProduct.isFlagship
-    );
-
-    // 2. Insert into Supabase Cloud Postgres Database (Exact PostgreSQL lowercase schema)
-    if (isSupabaseConfigured) {
-      const sbProduct = {
-        id,
-        name: cleanName,
-        brand: cleanBrand,
-        brandid: cleanBrandId,
-        category: cleanCategory,
-        price: cleanPrice,
-        packsize: packSize || '',
-        image: image || '',
-        description: description || '',
-        rating: 4.8,
-        reviews: 45,
-        instock: newProduct.inStock,
-        isflagship: newProduct.isFlagship
-      };
-
-      const { error: sbErr } = await supabase.from('products').upsert([sbProduct]);
-      if (sbErr) {
-        console.error('⚠️ Supabase Product Insert Error:', sbErr);
-      } else {
-        console.log('✅ Product saved directly to Supabase Postgres DB:', id);
-      }
-    }
-
-    return res.status(201).json({ success: true, ...newProduct, imageUrl: image || '' });
-  } catch (err) {
-    console.error('Error creating product:', err);
-    return res.status(500).json({ error: 'Failed to create product.' });
-  }
+    inStock: Boolean(sbProduct.instock),
+    isFlagship: Boolean(sbProduct.isflagship)
+  });
 });
 
-// Admin: Update Existing Product
+// Admin: Update Existing Product (100% Direct to Supabase)
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { name, brand, brandId, category, price, packSize, image, description, inStock, isFlagship } = req.body;
 
-  let existing = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
-  if (!existing && isSupabaseConfigured) {
-    const { data } = await supabase.from('products').select('*').eq('id', id).single();
-    existing = data;
+  if (!isSupabaseConfigured) {
+    return res.status(500).json({ error: 'Supabase credentials not configured in server environment.' });
   }
 
-  if (!existing) {
-    return res.status(404).json({ error: 'Product not found.' });
+  const { data: existing, error: findErr } = await supabase.from('products').select('*').eq('id', id).single();
+  if (findErr || !existing) {
+    return res.status(404).json({ error: 'Product not found in Supabase database.' });
   }
 
-  try {
-    const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : existing.brandId);
-    const cleanPrice = price !== undefined ? Math.max(0, parseFloat(price) || 0) : existing.price;
+  const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : (existing.brandid || existing.brandId));
+  const cleanPrice = price !== undefined ? Math.max(0, parseFloat(price) || 0) : parseFloat(existing.price);
 
-    const updatedData = {
-      id,
-      name: name || existing.name,
-      brand: brand || existing.brand,
-      brandId: cleanBrandId,
-      category: category || existing.category,
-      price: cleanPrice,
-      packSize: packSize !== undefined ? packSize : existing.packSize,
-      image: image !== undefined ? image : existing.image,
-      description: description !== undefined ? description : existing.description,
-      inStock: inStock !== undefined ? (inStock ? 1 : 0) : existing.inStock,
-      isFlagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : existing.isFlagship
-    };
+  const sbUpdate = {
+    id,
+    name: name || existing.name,
+    brand: brand || existing.brand,
+    brandid: cleanBrandId,
+    category: category || existing.category,
+    price: cleanPrice,
+    packsize: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || ''),
+    image: image !== undefined ? image : (existing.image || ''),
+    description: description !== undefined ? description : (existing.description || ''),
+    instock: inStock !== undefined ? (inStock ? 1 : 0) : (existing.instock !== undefined ? existing.instock : 1),
+    isflagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : (existing.isflagship !== undefined ? existing.isflagship : 0)
+  };
 
-    // Update SQLite
-    try {
-      db.prepare(`
-        UPDATE products SET
-          name = ?, brand = ?, brandId = ?, category = ?, price = ?,
-          packSize = ?, image = ?, description = ?, inStock = ?, isFlagship = ?
-        WHERE id = ?
-      `).run(
-        updatedData.name,
-        updatedData.brand,
-        updatedData.brandId,
-        updatedData.category,
-        updatedData.price,
-        updatedData.packSize,
-        updatedData.image,
-        updatedData.description,
-        updatedData.inStock,
-        updatedData.isFlagship,
-        id
-      );
-    } catch (e) {
-      console.warn('SQLite update error:', e);
-    }
+  const { data, error } = await supabase.from('products').upsert([sbUpdate]).select();
 
-    // Update Supabase (Exact PostgreSQL lowercase schema)
-    if (isSupabaseConfigured) {
-      const sbUpdate = {
-        id,
-        name: updatedData.name,
-        brand: updatedData.brand,
-        brandid: updatedData.brandId,
-        category: updatedData.category,
-        price: updatedData.price,
-        packsize: updatedData.packSize,
-        image: updatedData.image,
-        description: updatedData.description,
-        instock: updatedData.inStock,
-        isflagship: updatedData.isFlagship
-      };
-      await supabase.from('products').upsert([sbUpdate]);
-    }
-
-    return res.json({ success: true, ...updatedData });
-  } catch (err) {
-    console.error('Error updating product:', err);
-    return res.status(500).json({ error: 'Failed to update product.' });
+  if (error) {
+    console.error('Supabase PUT /products error:', error);
+    return res.status(400).json({ error: `Supabase Error: ${error.message}` });
   }
+
+  return res.json({ success: true, ...sbUpdate, brandId: cleanBrandId, packSize: sbUpdate.packsize, inStock: Boolean(sbUpdate.instock), isFlagship: Boolean(sbUpdate.isflagship) });
 });
 
-// Admin Update Product Base Catalog Price
+// Admin Update Base Price
 router.put('/:id/base-price', async (req, res) => {
   const { id } = req.params;
   const { price } = req.body;
@@ -285,44 +205,39 @@ router.put('/:id/base-price', async (req, res) => {
 
   const cleanPrice = Math.max(0, parseFloat(price));
 
-  try {
-    db.prepare('UPDATE products SET price = ? WHERE id = ?').run(cleanPrice, id);
-    if (isSupabaseConfigured) {
-      await supabase.from('products').update({ price: cleanPrice }).eq('id', id);
-    }
-    return res.json({ success: true, id, price: cleanPrice });
-  } catch (err) {
-    console.error('Error updating base price:', err);
-    return res.status(500).json({ error: 'Failed to update price.' });
+  const { error } = await supabase.from('products').update({ price: cleanPrice }).eq('id', id);
+  if (error) {
+    return res.status(400).json({ error: error.message });
   }
+
+  return res.json({ success: true, id, price: cleanPrice });
 });
 
-// Admin: Delete Product
+// Admin Delete Product
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
 
-  try {
-    db.prepare('DELETE FROM custom_prices WHERE productId = ?').run(id);
-    db.prepare('DELETE FROM products WHERE id = ?').run(id);
+  await supabase.from('custom_prices').delete().eq('productid', id).catch(() => {});
+  await supabase.from('custom_prices').delete().eq('productId', id).catch(() => {});
 
-    if (isSupabaseConfigured) {
-      await supabase.from('custom_prices').delete().eq('productId', id);
-      await supabase.from('products').delete().eq('id', id);
-    }
-
-    return res.json({ success: true, id });
-  } catch (err) {
-    console.error('Error deleting product:', err);
-    return res.status(500).json({ error: 'Failed to delete product.' });
+  const { error } = await supabase.from('products').delete().eq('id', id);
+  if (error) {
+    return res.status(400).json({ error: error.message });
   }
+
+  return res.json({ success: true, id });
 });
 
-// Admin: Upload Product Image (Supabase Storage Option 1 / Local Fallback)
+// Upload Product Image (Direct to Supabase Storage)
 router.post('/upload-image', async (req, res) => {
   const { imageData, filename } = req.body;
 
   if (!imageData) {
     return res.status(400).json({ error: 'Image data is required.' });
+  }
+
+  if (!isSupabaseConfigured) {
+    return res.status(500).json({ error: 'Supabase credentials not configured.' });
   }
 
   try {
@@ -340,56 +255,30 @@ router.post('/upload-image', async (req, res) => {
     }
 
     const uniqueName = `product-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
+    const imageBuffer = Buffer.from(base64Content, 'base64');
 
-    // Upload to Supabase Storage Bucket
-    if (isSupabaseConfigured) {
-      try {
-        const imageBuffer = Buffer.from(base64Content, 'base64');
-        const { data: storageData, error: storageErr } = await supabase.storage
-          .from('product-images')
-          .upload(`products/${uniqueName}`, imageBuffer, {
-            contentType: mimeType,
-            upsert: true
-          });
+    const { data: storageData, error: storageErr } = await supabase.storage
+      .from('product-images')
+      .upload(`products/${uniqueName}`, imageBuffer, {
+        contentType: mimeType,
+        upsert: true
+      });
 
-        if (!storageErr) {
-          const { data: publicUrlData } = supabase.storage
-            .from('product-images')
-            .getPublicUrl(`products/${uniqueName}`);
-
-          const publicUrl = publicUrlData.publicUrl;
-          console.log('✅ Image uploaded to Supabase Storage:', publicUrl);
-          return res.json({ success: true, imageUrl: publicUrl });
-        } else {
-          console.error('⚠️ Supabase Storage Upload Error:', storageErr);
-        }
-      } catch (supabaseErr) {
-        console.error('⚠️ Supabase Storage Exception:', supabaseErr);
-      }
+    if (storageErr) {
+      console.error('⚠️ Supabase Storage Upload Error:', storageErr);
+      return res.status(400).json({ error: `Supabase Storage Upload Error: ${storageErr.message}` });
     }
 
-    // Local Disk Storage Fallback
-    try {
-      const uploadsDir = process.env.DATA_DIR 
-        ? path.join(process.env.DATA_DIR, 'uploads')
-        : path.resolve(__dirname, '../../public/uploads');
+    const { data: publicUrlData } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(`products/${uniqueName}`);
 
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-      }
-
-      const filePath = path.join(uploadsDir, uniqueName);
-      fs.writeFileSync(filePath, base64Content, 'base64');
-
-      const imageUrl = `/uploads/${uniqueName}`;
-      return res.json({ success: true, imageUrl });
-    } catch (fsErr) {
-      console.warn('⚠️ Local disk write unavailable. Using base64 Data URL fallback:', fsErr.message);
-      return res.json({ success: true, imageUrl: imageData });
-    }
+    const publicUrl = publicUrlData.publicUrl;
+    console.log('✅ Uploaded image directly to Supabase Storage:', publicUrl);
+    return res.json({ success: true, imageUrl: publicUrl });
   } catch (err) {
     console.error('Error uploading image:', err);
-    return res.json({ success: true, imageUrl: imageData });
+    return res.status(500).json({ error: err.message });
   }
 });
 
