@@ -1,100 +1,95 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'bst-agro-secret-key-2026';
 
-// Get All Products (Direct from Supabase Cloud Postgres)
-router.get('/', async (req, res) => {
+// ─── GET ALL PRODUCTS ────────────────────────────────────────────────────────
+// Returns products from Supabase. Evaluates custom prices if customer JWT provided.
+router.get('/', async (req, res, next) => {
   if (!isSupabaseConfigured) {
-    return res.status(500).json({ error: 'Supabase credentials not configured in server environment.' });
+    return res.status(503).json({ error: 'Database not configured. Please set Supabase environment variables on Render.' });
   }
 
-  const { data, error } = await supabase.from('products').select('*');
-  if (error) {
-    console.error('Supabase GET /products error:', error);
-    return res.status(400).json({ error: error.message, details: error.details || error.hint });
-  }
-
-  const formattedProducts = (data || []).map(p => {
-    const bId = p.brandId || p.brandid || (p.brand ? p.brand.toLowerCase().replace(/[^a-z0-9]/g, '') : 'gen');
-    const img = p.image || p.imageUrl || '';
-    const inStk = p.inStock !== undefined ? p.inStock : (p.instock !== undefined ? p.instock : 1);
-    const isFlag = p.isFlagship !== undefined ? p.isFlagship : (p.isflagship !== undefined ? p.isflagship : 0);
-
-    return {
-      ...p,
-      id: p.id,
-      name: p.name,
-      brand: p.brand,
-      brandId: bId,
-      category: p.category,
-      price: parseFloat(p.price) || 0,
-      packSize: p.packSize || p.packsize || '',
-      image: img,
-      imageUrl: img,
-      description: p.description || '',
-      rating: parseFloat(p.rating) || 4.8,
-      reviews: parseInt(p.reviews) || 45,
-      inStock: Boolean(inStk),
-      isFlagship: Boolean(isFlag),
-      isOwnBrand: bId === 'bst' || (p.brand && p.brand.toLowerCase().includes('bst'))
-    };
-  });
-
-  // Check Authorization Header for Customer JWT
-  let customerId = null;
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    try {
-      const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, JWT_SECRET);
-      if (decoded && decoded.id) {
-        customerId = decoded.id;
-      }
-    } catch (err) {
-      // Invalid/expired token - proceed as anonymous
+  try {
+    const { data, error } = await supabase.from('products').select('*');
+    if (error) {
+      console.error('Supabase GET /products error:', error);
+      return res.status(400).json({ error: error.message, details: error.details || error.hint });
     }
-  }
 
-  if (customerId) {
-    const { data: cpData } = await supabase.from('custom_prices').select('*');
-    const customPrices = (cpData || []).filter(cp => (cp.customerId || cp.customerid) === customerId);
+    const formattedProducts = (data || []).map(p => {
+      const bId = p.brandId || p.brandid || (p.brand ? p.brand.toLowerCase().replace(/[^a-z0-9]/g, '') : 'gen');
+      const img = p.image || p.imageUrl || '';
+      const inStk = p.inStock !== undefined ? p.inStock : (p.instock !== undefined ? p.instock : 1);
+      const isFlag = p.isFlagship !== undefined ? p.isFlagship : (p.isflagship !== undefined ? p.isflagship : 0);
 
-    const priceMap = {};
-    customPrices.forEach(cp => {
-      const pId = cp.productId || cp.productid;
-      const cPrice = cp.customPrice || cp.customprice;
-      priceMap[pId] = cPrice;
+      return {
+        ...p,
+        id: p.id,
+        name: p.name,
+        brand: p.brand,
+        brandId: bId,
+        category: p.category,
+        price: parseFloat(p.price) || 0,
+        packSize: p.packSize || p.packsize || '',
+        image: img,
+        imageUrl: img,
+        description: p.description || '',
+        rating: parseFloat(p.rating) || 4.8,
+        reviews: parseInt(p.reviews) || 45,
+        inStock: Boolean(inStk),
+        isFlagship: Boolean(isFlag),
+        isOwnBrand: bId === 'bst' || (p.brand && p.brand.toLowerCase().includes('bst'))
+      };
     });
 
-    const evaluatedProducts = formattedProducts.map(p => {
-      if (priceMap[p.id] !== undefined) {
-        return {
-          ...p,
-          price: Math.max(0, priceMap[p.id]),
-          hasCustomPrice: true
-        };
+    // Check Authorization Header for Customer JWT to apply custom prices
+    let customerId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded && decoded.id) {
+          customerId = decoded.id;
+        }
+      } catch {
+        // Invalid/expired token — proceed as anonymous
       }
-      return p;
-    });
+    }
 
-    return res.json(evaluatedProducts);
+    if (customerId) {
+      const { data: cpData } = await supabase.from('custom_prices').select('*');
+      const customPrices = (cpData || []).filter(cp => (cp.customerId || cp.customerid) === customerId);
+
+      const priceMap = {};
+      customPrices.forEach(cp => {
+        const pId = cp.productId || cp.productid;
+        const cPrice = cp.customPrice || cp.customprice;
+        priceMap[pId] = cPrice;
+      });
+
+      const evaluatedProducts = formattedProducts.map(p => {
+        if (priceMap[p.id] !== undefined) {
+          return { ...p, price: Math.max(0, priceMap[p.id]), hasCustomPrice: true };
+        }
+        return p;
+      });
+
+      return res.json(evaluatedProducts);
+    }
+
+    return res.json(formattedProducts);
+  } catch (err) {
+    next(err);
   }
-
-  return res.json(formattedProducts);
 });
 
-// Admin: Create New Product (100% Direct to Supabase)
-router.post('/', async (req, res) => {
+// ─── CREATE NEW PRODUCT ──────────────────────────────────────────────────────
+router.post('/', async (req, res, next) => {
   const { name, brand, brandId, category, price, packSize, image, description, inStock, isFlagship } = req.body;
 
   if (!name || !brand || price === undefined) {
@@ -102,100 +97,63 @@ router.post('/', async (req, res) => {
   }
 
   if (!isSupabaseConfigured) {
-    return res.status(500).json({ error: 'Supabase credentials not configured in server environment.' });
+    return res.status(503).json({ error: 'Database not configured. Please set Supabase environment variables on Render.' });
   }
 
-  const id = req.body.id || `prod-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const cleanName = (name || '').trim();
-  const cleanBrand = (brand || '').trim();
-  const cleanCategory = (category || 'General').trim();
-  const cleanBrandId = (brandId || cleanBrand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
-  const cleanPrice = Math.max(0, parseFloat(price) || 0);
+  try {
+    const id = req.body.id || `prod-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const cleanName = (name || '').trim();
+    const cleanBrand = (brand || '').trim();
+    const cleanCategory = (category || 'General').trim();
+    const cleanBrandId = (brandId || cleanBrand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
+    const cleanPrice = Math.max(0, parseFloat(price) || 0);
 
-  const sbProduct = {
-    id,
-    name: cleanName,
-    brand: cleanBrand,
-    brandid: cleanBrandId,
-    category: cleanCategory,
-    price: cleanPrice,
-    packsize: packSize || '',
-    image: image || '',
-    description: description || '',
-    rating: 4.8,
-    reviews: 45,
-    instock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
-    isflagship: isFlagship ? 1 : 0
-  };
+    const sbProduct = {
+      id,
+      name: cleanName,
+      brand: cleanBrand,
+      brandid: cleanBrandId,
+      category: cleanCategory,
+      price: cleanPrice,
+      packsize: packSize || '',
+      image: image || '',
+      description: description || '',
+      rating: 4.8,
+      reviews: 45,
+      instock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
+      isflagship: isFlagship ? 1 : 0
+    };
 
-  const { data, error } = await supabase.from('products').upsert([sbProduct]).select();
+    const { data, error } = await supabase.from('products').upsert([sbProduct]).select();
 
-  if (error) {
-    console.error('Supabase POST /products error:', error);
-    return res.status(400).json({ error: `Supabase Error: ${error.message}`, details: error.details || error.hint });
+    if (error) {
+      console.error('Supabase POST /products error:', error);
+      return res.status(400).json({ error: `Supabase Error: ${error.message}`, details: error.details || error.hint });
+    }
+
+    console.log('✅ Product saved to Supabase:', data);
+    return res.status(201).json({
+      success: true,
+      id,
+      name: cleanName,
+      brand: cleanBrand,
+      brandId: cleanBrandId,
+      category: cleanCategory,
+      price: cleanPrice,
+      packSize: packSize || '',
+      image: image || '',
+      imageUrl: image || '',
+      description: description || '',
+      inStock: Boolean(sbProduct.instock),
+      isFlagship: Boolean(sbProduct.isflagship)
+    });
+  } catch (err) {
+    next(err);
   }
-
-  console.log('✅ Product saved directly to Supabase:', data);
-  return res.status(201).json({
-    success: true,
-    id,
-    name: cleanName,
-    brand: cleanBrand,
-    brandId: cleanBrandId,
-    category: cleanCategory,
-    price: cleanPrice,
-    packSize: packSize || '',
-    image: image || '',
-    imageUrl: image || '',
-    description: description || '',
-    inStock: Boolean(sbProduct.instock),
-    isFlagship: Boolean(sbProduct.isflagship)
-  });
 });
 
-// Admin: Update Existing Product (100% Direct to Supabase)
-router.put('/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name, brand, brandId, category, price, packSize, image, description, inStock, isFlagship } = req.body;
-
-  if (!isSupabaseConfigured) {
-    return res.status(500).json({ error: 'Supabase credentials not configured in server environment.' });
-  }
-
-  const { data: existing, error: findErr } = await supabase.from('products').select('*').eq('id', id).single();
-  if (findErr || !existing) {
-    return res.status(404).json({ error: 'Product not found in Supabase database.' });
-  }
-
-  const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : (existing.brandid || existing.brandId));
-  const cleanPrice = price !== undefined ? Math.max(0, parseFloat(price) || 0) : parseFloat(existing.price);
-
-  const sbUpdate = {
-    id,
-    name: name || existing.name,
-    brand: brand || existing.brand,
-    brandid: cleanBrandId,
-    category: category || existing.category,
-    price: cleanPrice,
-    packsize: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || ''),
-    image: image !== undefined ? image : (existing.image || ''),
-    description: description !== undefined ? description : (existing.description || ''),
-    instock: inStock !== undefined ? (inStock ? 1 : 0) : (existing.instock !== undefined ? existing.instock : 1),
-    isflagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : (existing.isflagship !== undefined ? existing.isflagship : 0)
-  };
-
-  const { data, error } = await supabase.from('products').upsert([sbUpdate]).select();
-
-  if (error) {
-    console.error('Supabase PUT /products error:', error);
-    return res.status(400).json({ error: `Supabase Error: ${error.message}` });
-  }
-
-  return res.json({ success: true, ...sbUpdate, brandId: cleanBrandId, packSize: sbUpdate.packsize, inStock: Boolean(sbUpdate.instock), isFlagship: Boolean(sbUpdate.isflagship) });
-});
-
-// Admin Update Base Price
-router.put('/:id/base-price', async (req, res) => {
+// ─── UPDATE BASE PRICE (must be before /:id to avoid route conflict) ─────────
+router.put('/:id/base-price', async (req, res, next) => {
   const { id } = req.params;
   const { price } = req.body;
 
@@ -203,18 +161,76 @@ router.put('/:id/base-price', async (req, res) => {
     return res.status(400).json({ error: 'Valid price is required.' });
   }
 
-  const cleanPrice = Math.max(0, parseFloat(price));
-
-  const { error } = await supabase.from('products').update({ price: cleanPrice }).eq('id', id);
-  if (error) {
-    return res.status(400).json({ error: error.message });
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({ error: 'Database not configured.' });
   }
 
-  return res.json({ success: true, id, price: cleanPrice });
+  try {
+    const cleanPrice = Math.max(0, parseFloat(price));
+    const { error } = await supabase.from('products').update({ price: cleanPrice }).eq('id', id);
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.json({ success: true, id, price: cleanPrice });
+  } catch (err) {
+    next(err);
+  }
 });
 
-// Admin Delete Product
-router.delete('/:id', async (req, res) => {
+// ─── UPDATE EXISTING PRODUCT ─────────────────────────────────────────────────
+router.put('/:id', async (req, res, next) => {
+  const { id } = req.params;
+  const { name, brand, brandId, category, price, packSize, image, description, inStock, isFlagship } = req.body;
+
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({ error: 'Database not configured.' });
+  }
+
+  try {
+    const { data: existing, error: findErr } = await supabase.from('products').select('*').eq('id', id).single();
+    if (findErr || !existing) {
+      return res.status(404).json({ error: 'Product not found in Supabase database.' });
+    }
+
+    const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : (existing.brandid || existing.brandId));
+    const cleanPrice = price !== undefined ? Math.max(0, parseFloat(price) || 0) : parseFloat(existing.price);
+
+    const sbUpdate = {
+      id,
+      name: name || existing.name,
+      brand: brand || existing.brand,
+      brandid: cleanBrandId,
+      category: category || existing.category,
+      price: cleanPrice,
+      packsize: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || ''),
+      image: image !== undefined ? image : (existing.image || ''),
+      description: description !== undefined ? description : (existing.description || ''),
+      instock: inStock !== undefined ? (inStock ? 1 : 0) : (existing.instock !== undefined ? existing.instock : 1),
+      isflagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : (existing.isflagship !== undefined ? existing.isflagship : 0)
+    };
+
+    const { data, error } = await supabase.from('products').upsert([sbUpdate]).select();
+
+    if (error) {
+      console.error('Supabase PUT /products error:', error);
+      return res.status(400).json({ error: `Supabase Error: ${error.message}` });
+    }
+
+    return res.json({
+      success: true,
+      ...sbUpdate,
+      brandId: cleanBrandId,
+      packSize: sbUpdate.packsize,
+      inStock: Boolean(sbUpdate.instock),
+      isFlagship: Boolean(sbUpdate.isflagship)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── DELETE PRODUCT ───────────────────────────────────────────────────────────
+router.delete('/:id', async (req, res, next) => {
   const { id } = req.params;
   const cleanId = (id || '').trim();
 
@@ -222,32 +238,39 @@ router.delete('/:id', async (req, res) => {
     return res.status(400).json({ error: 'Product ID is required.' });
   }
 
-  if (isSupabaseConfigured) {
-    try {
-      // 1. Delete associated custom prices (exact PostgreSQL lowercase column productid)
-      const { error: cpErr } = await supabase.from('custom_prices').delete().eq('productid', cleanId);
-      if (cpErr) console.warn('Supabase custom_prices delete warning:', cpErr.message);
-
-      // 2. Delete product from products table
-      const { data: delData, error: delErr } = await supabase.from('products').delete().eq('id', cleanId).select();
-      
-      if (delErr) {
-        console.error('❌ Supabase Delete Error:', delErr);
-        return res.status(400).json({ error: `Supabase Delete Error: ${delErr.message}` });
-      }
-
-      console.log('✅ Product deleted from Supabase:', cleanId, delData);
-    } catch (err) {
-      console.error('❌ Delete exception:', err);
-      return res.status(500).json({ error: err.message });
-    }
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({ error: 'Database not configured. Cannot delete product.' });
   }
 
-  return res.json({ success: true, id: cleanId });
+  try {
+    // 1. Delete associated custom prices first (uses PostgreSQL lowercase column name)
+    const { error: cpErr } = await supabase.from('custom_prices').delete().eq('productid', cleanId);
+    if (cpErr) {
+      console.warn('⚠️ custom_prices delete warning (non-fatal):', cpErr.message);
+    }
+
+    // 2. Delete the product itself
+    const { data: delData, error: delErr } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', cleanId)
+      .select();
+
+    if (delErr) {
+      console.error('❌ Supabase product delete error:', delErr);
+      return res.status(400).json({ error: `Delete failed: ${delErr.message}` });
+    }
+
+    console.log('✅ Product deleted from Supabase:', cleanId, delData);
+    return res.json({ success: true, id: cleanId, deleted: delData });
+  } catch (err) {
+    console.error('❌ Unexpected delete error:', err);
+    next(err);
+  }
 });
 
-// Upload Product Image (Direct to Supabase Storage)
-router.post('/upload-image', async (req, res) => {
+// ─── UPLOAD PRODUCT IMAGE (Base64 → Supabase Storage) ────────────────────────
+router.post('/upload-image', async (req, res, next) => {
   const { imageData, filename } = req.body;
 
   if (!imageData) {
@@ -255,7 +278,7 @@ router.post('/upload-image', async (req, res) => {
   }
 
   if (!isSupabaseConfigured) {
-    return res.status(500).json({ error: 'Supabase credentials not configured.' });
+    return res.status(503).json({ error: 'Supabase credentials not configured.' });
   }
 
   try {
@@ -284,7 +307,7 @@ router.post('/upload-image', async (req, res) => {
 
     if (storageErr) {
       console.error('⚠️ Supabase Storage Upload Error:', storageErr);
-      return res.status(400).json({ error: `Supabase Storage Upload Error: ${storageErr.message}` });
+      return res.status(400).json({ error: `Image upload failed: ${storageErr.message}` });
     }
 
     const { data: publicUrlData } = supabase.storage
@@ -292,11 +315,10 @@ router.post('/upload-image', async (req, res) => {
       .getPublicUrl(`products/${uniqueName}`);
 
     const publicUrl = publicUrlData.publicUrl;
-    console.log('✅ Uploaded image directly to Supabase Storage:', publicUrl);
+    console.log('✅ Image uploaded to Supabase Storage:', publicUrl);
     return res.json({ success: true, imageUrl: publicUrl });
   } catch (err) {
-    console.error('Error uploading image:', err);
-    return res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
