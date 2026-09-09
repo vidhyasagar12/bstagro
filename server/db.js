@@ -87,7 +87,11 @@ export function initDb() {
     )
   `);
 
-  console.log('✅ SQLite Database schema initialized successfully at:', dbPath);
+  if (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) {
+    console.log('ℹ️ Local SQLite fallback initialized at:', dbPath);
+  } else {
+    console.log('✅ SQLite Database schema initialized successfully at:', dbPath);
+  }
 }
 
 export default db;
