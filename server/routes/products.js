@@ -230,7 +230,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // ─── DELETE PRODUCT ───────────────────────────────────────────────────────────
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   const cleanId = (id || '').trim();
 
@@ -239,35 +239,32 @@ router.delete('/:id', async (req, res, next) => {
   }
 
   if (!isSupabaseConfigured) {
-    return res.status(503).json({ error: 'Database not configured. Cannot delete product.' });
+    return res.status(503).json({ error: 'Database not configured on server. Cannot delete product.' });
   }
 
   try {
-    // 1. Delete associated custom prices first (uses PostgreSQL lowercase column name)
-    const { error: cpErr } = await supabase.from('custom_prices').delete().eq('productid', cleanId);
-    if (cpErr) {
-      console.warn('⚠️ custom_prices delete warning (non-fatal):', cpErr.message);
+    // 1. Delete associated custom prices first (PostgreSQL lowercase column name)
+    const cpResult = await supabase.from('custom_prices').delete().eq('productid', cleanId);
+    if (cpResult.error) {
+      console.warn('⚠️ custom_prices delete warning (non-fatal):', cpResult.error.message);
     }
 
-    // 2. Delete the product itself
-    const { data: delData, error: delErr } = await supabase
-      .from('products')
-      .delete()
-      .eq('id', cleanId)
-      .select();
+    // 2. Delete the product itself and select returned rows
+    const prodResult = await supabase.from('products').delete().eq('id', cleanId).select();
 
-    if (delErr) {
-      console.error('❌ Supabase product delete error:', delErr);
-      return res.status(400).json({ error: `Delete failed: ${delErr.message}` });
+    if (prodResult.error) {
+      console.error('❌ Supabase product delete error:', prodResult.error);
+      return res.status(400).json({ error: `Delete failed: ${prodResult.error.message}` });
     }
 
-    console.log('✅ Product deleted from Supabase:', cleanId, delData);
-    return res.json({ success: true, id: cleanId, deleted: delData });
+    console.log('✅ Product deleted from Supabase:', cleanId);
+    return res.status(200).json({ success: true, id: cleanId });
   } catch (err) {
-    console.error('❌ Unexpected delete error:', err);
-    next(err);
+    console.error('❌ Unexpected delete exception:', err.message, err.stack);
+    return res.status(500).json({ error: `Server error during delete: ${err.message}` });
   }
 });
+
 
 // ─── UPLOAD PRODUCT IMAGE (Base64 → Supabase Storage) ────────────────────────
 router.post('/upload-image', async (req, res, next) => {
