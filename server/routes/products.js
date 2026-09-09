@@ -65,6 +65,29 @@ router.get('/', (req, res) => {
   return res.json(formattedProducts);
 });
 
+// Supabase DB Sync Helper
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+async function syncSupabase(table, method, body, query = '') {
+  if (!supabaseUrl || !supabaseKey) return;
+  try {
+    const url = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/${table}${query}`;
+    await fetch(url, {
+      method,
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'apiKey': supabaseKey,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates,return=minimal'
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (err) {
+    console.warn(`⚠️ Supabase sync warning (${table}):`, err.message);
+  }
+}
+
 // Admin: Create New Product
 router.post('/', (req, res) => {
   const { name, brand, brandId, category, price, packSize, image, description, inStock, isFlagship } = req.body;
@@ -73,11 +96,28 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Product name, company/brand name, and price are required.' });
   }
 
+  const id = req.body.id || `prod-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   const cleanName = (name || '').trim();
   const cleanBrand = (brand || '').trim();
   const cleanCategory = (category || 'General').trim();
   const cleanBrandId = (brandId || cleanBrand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
   const cleanPrice = Math.max(0, parseFloat(price) || 0);
+
+  const newProduct = {
+    id,
+    name: cleanName,
+    brand: cleanBrand,
+    brandId: cleanBrandId,
+    category: cleanCategory,
+    price: cleanPrice,
+    packSize: packSize || '',
+    image: image || '',
+    description: description || '',
+    rating: 4.8,
+    reviews: 45,
+    inStock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
+    isFlagship: isFlagship ? 1 : 0
+  };
 
   try {
     db.prepare(`
@@ -93,13 +133,16 @@ router.post('/', (req, res) => {
       packSize || '',
       image || '',
       description || '',
-      0,
-      0,
+      4.8,
+      45,
       inStock !== undefined ? (inStock ? 1 : 0) : 1,
       isFlagship ? 1 : 0
     );
 
-    return res.status(201).json({ success: true, id, name: cleanName, brand: cleanBrand, price: cleanPrice });
+    // Sync to Supabase Postgres Database
+    syncSupabase('products', 'POST', newProduct);
+
+    return res.status(201).json({ success: true, ...newProduct, imageUrl: image || '' });
   } catch (err) {
     console.error('Error creating product:', err);
     return res.status(500).json({ error: 'Failed to create product.' });
@@ -120,26 +163,43 @@ router.put('/:id', (req, res) => {
     const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : existing.brandId);
     const cleanPrice = price !== undefined ? Math.max(0, parseFloat(price) || 0) : existing.price;
 
+    const updatedData = {
+      id,
+      name: name || existing.name,
+      brand: brand || existing.brand,
+      brandId: cleanBrandId,
+      category: category || existing.category,
+      price: cleanPrice,
+      packSize: packSize !== undefined ? packSize : existing.packSize,
+      image: image !== undefined ? image : existing.image,
+      description: description !== undefined ? description : existing.description,
+      inStock: inStock !== undefined ? (inStock ? 1 : 0) : existing.inStock,
+      isFlagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : existing.isFlagship
+    };
+
     db.prepare(`
       UPDATE products SET
         name = ?, brand = ?, brandId = ?, category = ?, price = ?,
         packSize = ?, image = ?, description = ?, inStock = ?, isFlagship = ?
       WHERE id = ?
     `).run(
-      name || existing.name,
-      brand || existing.brand,
-      cleanBrandId,
-      category || existing.category,
-      cleanPrice,
-      packSize !== undefined ? packSize : existing.packSize,
-      image !== undefined ? image : existing.image,
-      description !== undefined ? description : existing.description,
-      inStock !== undefined ? (inStock ? 1 : 0) : existing.inStock,
-      isFlagship !== undefined ? (isFlagship ? 1 : 0) : existing.isFlagship,
+      updatedData.name,
+      updatedData.brand,
+      updatedData.brandId,
+      updatedData.category,
+      updatedData.price,
+      updatedData.packSize,
+      updatedData.image,
+      updatedData.description,
+      updatedData.inStock,
+      updatedData.isFlagship,
       id
     );
 
-    return res.json({ success: true, id });
+    // Sync to Supabase Postgres Database
+    syncSupabase('products', 'POST', updatedData);
+
+    return res.json({ success: true, ...updatedData });
   } catch (err) {
     console.error('Error updating product:', err);
     return res.status(500).json({ error: 'Failed to update product.' });
