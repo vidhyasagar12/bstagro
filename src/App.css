@@ -1947,3 +1947,320 @@ html, body, #root, .app-wrapper, .layout-container, main, header, footer {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ── Receipt Modal & Printable Document Styles ────────────────────────── */
+.receipt-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.receipt-modal-content {
+  background: #ffffff;
+  border-radius: 16px;
+  max-width: 680px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.receipt-modal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.receipt-close-btn {
+  background: transparent;
+  border: none;
+  color: #64748B;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+.receipt-close-btn:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+
+.receipt-scroll-area {
+  overflow-y: auto;
+  padding: 1.25rem;
+  background: #F1F5F9;
+}
+
+.receipt-card-document {
+  background: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #CBD5E1;
+  padding: 1.75rem;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  color: #0F172A;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.receipt-header-banner {
+  text-align: center;
+  border-bottom: 2px solid #056835;
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.receipt-brand-badge {
+  display: inline-block;
+  background: #E6F4ED;
+  color: #056835;
+  font-weight: 900;
+  font-size: 0.75rem;
+  padding: 3px 12px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.4rem;
+}
+
+.receipt-company-title {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #056835;
+  margin: 0 0 0.2rem;
+  letter-spacing: -0.3px;
+}
+
+.receipt-company-subtitle {
+  font-size: 0.82rem;
+  color: #475569;
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.receipt-company-contacts {
+  font-size: 0.78rem;
+  color: #64748B;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+
+.receipt-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  background: #F8FAFC;
+  padding: 0.85rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #E2E8F0;
+  margin-bottom: 1.25rem;
+}
+
+.meta-label {
+  display: block;
+  font-size: 0.68rem;
+  color: #64748B;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+
+.meta-value {
+  font-size: 0.88rem;
+  color: #0F172A;
+  font-weight: 700;
+}
+
+.meta-value-highlight {
+  font-size: 0.95rem;
+  color: #056835;
+  font-weight: 900;
+}
+
+.receipt-customer-box {
+  background: #FFFFFF;
+  border: 1.5px dashed #056835;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.customer-box-title {
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: #056835;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.customer-details-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.receipt-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.25rem;
+  font-size: 0.85rem;
+}
+
+.receipt-table th {
+  background: #056835;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 0.75rem;
+  letter-spacing: 0.4px;
+  padding: 0.6rem 0.6rem;
+  text-align: left;
+}
+
+.receipt-table th:first-child { border-top-left-radius: 6px; }
+.receipt-table th:last-child { border-top-right-radius: 6px; }
+
+.receipt-table td {
+  padding: 0.65rem 0.6rem;
+  border-bottom: 1px solid #E2E8F0;
+  color: #1E293B;
+}
+
+.brand-tag {
+  background: #F1F5F9;
+  color: #475569;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.receipt-summary-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.receipt-guarantee-note {
+  flex: 1;
+  background: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  padding: 0.75rem;
+  border-radius: 8px;
+}
+
+.receipt-totals-box {
+  min-width: 220px;
+  background: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+}
+
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: #475569;
+  padding: 3px 0;
+  font-weight: 600;
+}
+
+.total-row.grand-total {
+  border-top: 2px solid #056835;
+  margin-top: 4px;
+  padding-top: 6px;
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #0F172A;
+}
+
+.receipt-footer-stamp {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #E2E8F0;
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.stamp-verified-badge {
+  background: #056835;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.5px;
+}
+
+.receipt-actions-bar {
+  padding: 1rem 1.25rem;
+  background: #ffffff;
+  border-top: 1px solid #E2E8F0;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.receipt-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.receipt-btn.primary {
+  background: linear-gradient(135deg, #056835 0%, #045229 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(5, 104, 53, 0.25);
+}
+.receipt-btn.primary:hover {
+  background: linear-gradient(135deg, #045229 0%, #033c1e 100%);
+}
+
+.receipt-btn.whatsapp {
+  background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.25);
+}
+.receipt-btn.whatsapp:hover {
+  opacity: 0.95;
+}
+
+.receipt-btn.secondary {
+  background: #F1F5F9;
+  color: #334155;
+  flex: 0 0 auto;
+}
+.receipt-btn.secondary:hover {
+  background: #E2E8F0;
+}

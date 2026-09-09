@@ -11,6 +11,7 @@ import { WholesaleModal } from './components/WholesaleModal';
 import { ShopAuthModal } from './components/ShopAuthModal';
 import { BrandAccordionSection } from './components/BrandAccordionSection';
 import { FloatingWhatsAppBtn } from './components/FloatingWhatsAppBtn';
+import { ReceiptModal } from './components/ReceiptModal';
 import { Footer } from './components/Footer';
 import { PRODUCTS as INITIAL_PRODUCTS, CATEGORIES, BRANDS } from './data/products';
 import { INITIAL_CUSTOMERS, getEffectivePrice } from './data/customers';
@@ -57,6 +58,9 @@ export function App() {
     const saved = localStorage.getItem('bst_ecommerce_cart');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Image Receipt Modal State
+  const [receiptModalData, setReceiptModalData] = useState(null);
 
   // Modals & Pages
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -621,7 +625,20 @@ export function App() {
         onClearCart={handleClearCart}
         currentCustomer={currentCustomer}
         onRecordNewOrder={handleRecordNewOrder}
+        onShowReceipt={(data) => setReceiptModalData(data)}
       />
+
+      {/* Image Receipt Modal */}
+      {receiptModalData && (
+        <ReceiptModal 
+          isOpen={!!receiptModalData}
+          onClose={() => setReceiptModalData(null)}
+          cartItems={receiptModalData.cartItems}
+          customerForm={receiptModalData.customerForm}
+          orderId={receiptModalData.orderId}
+          totalPrice={receiptModalData.totalPrice}
+        />
+      )}
 
       {/* Wholesale Modal */}
       <WholesaleModal 

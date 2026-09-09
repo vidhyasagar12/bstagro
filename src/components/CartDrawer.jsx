@@ -9,7 +9,8 @@ export const CartDrawer = ({
   onRemoveItem, 
   onClearCart,
   currentCustomer,
-  onRecordNewOrder
+  onRecordNewOrder,
+  onShowReceipt
 }) => {
   const [customerForm, setCustomerForm] = useState({
     shopName: '',
@@ -33,58 +34,56 @@ export const CartDrawer = ({
 
   const totalPrice = cartItems.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
-  const handleSendWhatsAppOrder = (e) => {
+  const handleProcessOrderAndReceipt = (e, triggerWhatsApp = true) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
     if (cartItems.length === 0) return;
 
-    const shopTitle = customerForm.shopName || (currentCustomer ? currentCustomer.shopName : 'Direct Customer');
-    const ownerTitle = customerForm.ownerName || (currentCustomer ? currentCustomer.ownerName : 'Valued Customer');
-    const phoneNum = customerForm.phone || (currentCustomer ? currentCustomer.phone : 'Not specified');
-    const addressStr = customerForm.address || (currentCustomer ? currentCustomer.address : 'Standard Delivery Address');
+    if (!customerForm.shopName.trim()) {
+      alert('Please enter your Hotel / Shop Name before proceeding with the order.');
+      return;
+    }
 
-    let itemsSummary = cartItems.map((item, idx) => 
-      `${idx + 1}. *${item.name}* (${item.brand})\n   Qty: ${item.qty} x ₹${item.price} = ₹${(item.qty * item.price).toLocaleString()}`
-    ).join('\n\n');
+    const shopTitle = customerForm.shopName.trim();
+    const ownerTitle = customerForm.ownerName.trim() || 'Valued Customer';
+    const phoneNum = customerForm.phone.trim() || 'Not specified';
+    const addressStr = customerForm.address.trim() || 'Standard Delivery Address';
+    const generatedOrderId = `BST-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    let msg = `🏢 *NEW ORDER FROM: ${shopTitle.toUpperCase()}*\n` +
-              `----------------------------------------\n` +
-              `👤 *Owner / Contact:* ${ownerTitle}\n` +
-              `📞 *Phone:* ${phoneNum}\n` +
-              `📍 *Delivery Address:* ${addressStr}\n\n` +
-              `📦 *ITEMIZED ORDER DETAILS (${cartItems.length} items):*\n\n${itemsSummary}\n\n` +
-              `----------------------------------------\n` +
-              `💰 *TOTAL PAYABLE AMOUNT:* ₹${totalPrice.toLocaleString()}\n` +
-              `----------------------------------------\n` +
-              `Please confirm stock availability and dispatch time. Thank you!`;
-
-    const whatsappUrl = `https://wa.me/919949694030?text=${encodeURIComponent(msg)}`;
-
-    // Record order in Express Supabase backend concurrently
     const orderData = {
+      orderId: generatedOrderId,
       customerId: currentCustomer ? currentCustomer.id : null,
       shopName: shopTitle,
       ownerName: ownerTitle,
       phone: phoneNum,
       address: addressStr,
-      items: cartItems.map(i => ({ id: i.id, name: i.name, packSize: i.packSize, price: i.price, qty: i.qty })),
+      items: cartItems.map(i => ({ id: i.id, name: i.name, brand: i.brand, packSize: i.packSize, price: i.price, qty: i.qty })),
       totalAmount: totalPrice
     };
 
+    // Log order to backend
     if (onRecordNewOrder) {
       onRecordNewOrder(orderData).catch(err => {
         console.error('Failed to log order to database:', err);
       });
     }
 
-    // Reset local cart & close drawer
+    // Launch Receipt Modal preview
+    if (onShowReceipt) {
+      onShowReceipt({
+        cartItems: [...cartItems],
+        customerForm: { shopName: shopTitle, ownerName: ownerTitle, phone: phoneNum, address: addressStr },
+        orderId: generatedOrderId,
+        totalPrice: totalPrice,
+        autoOpenWhatsApp: triggerWhatsApp
+      });
+    }
+
+    // Clear cart and close drawer
     onClearCart();
     onClose();
-
-    // Redirect to WhatsApp - location.href is universally supported on mobile (iOS/Android) & bypasses popup blockers
-    window.location.href = whatsappUrl;
   };
 
   return (
@@ -212,10 +211,10 @@ export const CartDrawer = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               <button 
                 type="button"
-                onClick={handleSendWhatsAppOrder}
+                onClick={(e) => handleProcessOrderAndReceipt(e, true)}
                 style={{
                   width: '100%',
-                  background: '#25D366',
+                  background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
                   color: '#ffffff',
                   padding: '0.85rem',
                   borderRadius: '10px',
@@ -231,11 +230,12 @@ export const CartDrawer = ({
                 }}
               >
                 <MessageCircle size={20} />
-                <span>Send Order via WhatsApp</span>
+                <span>Send Order & Get Image Bill 🖼️</span>
               </button>
 
-              <a 
-                href="tel:+919949694030"
+              <button
+                type="button"
+                onClick={(e) => handleProcessOrderAndReceipt(e, false)}
                 style={{
                   width: '100%',
                   background: '#0F172A',
@@ -248,12 +248,13 @@ export const CartDrawer = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.5rem',
-                  textDecoration: 'none'
+                  border: 'none',
+                  cursor: 'pointer'
                 }}
               >
-                <PhoneCall size={16} color="#4ADE80" />
-                <span>Or Call +91 99496 94030 to Order</span>
-              </a>
+                <FileText size={16} color="#4ADE80" />
+                <span>Preview & Download Image Receipt Only</span>
+              </button>
             </div>
           </div>
         )}
