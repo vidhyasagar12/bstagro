@@ -16,5 +16,5 @@ export const isSupabaseConfigured = Boolean(supabase);
 if (isSupabaseConfigured) {
   console.log('⚡ Supabase Cloud Database & Storage Client initialized successfully:', supabaseUrl);
 } else {
-  console.log('ℹ️ Supabase environment variables not detected. Operating on local SQLite database.');
+  console.warn('⚠️ Supabase environment variables not detected! Backend requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
 }

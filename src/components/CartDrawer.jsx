@@ -62,7 +62,7 @@ export const CartDrawer = ({
 
     const whatsappUrl = `https://wa.me/919949694030?text=${encodeURIComponent(msg)}`;
 
-    // Record order in Express SQLite database concurrently
+    // Record order in Express Supabase backend concurrently
     const orderData = {
       customerId: currentCustomer ? currentCustomer.id : null,
       shopName: shopTitle,

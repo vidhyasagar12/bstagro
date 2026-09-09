@@ -5,7 +5,6 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
-import { initDb } from './db.js';
 import authRoutes from './routes/auth.js';
 import productRoutes from './routes/products.js';
 import customerRoutes from './routes/customers.js';
@@ -23,14 +22,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ─── INITIALIZE LOCAL SQLITE (fallback, non-fatal) ───────────────────────────
-try {
-  initDb();
-} catch (err) {
-  console.warn('⚠️ SQLite init warning (non-fatal on Supabase-only deployments):', err.message);
-}
-
-// ─── SERVE UPLOADED IMAGES (local dev / Render persistent disk) ──────────────
+// ─── SERVE UPLOADED IMAGES ────────────────────────────────────────────────────
 const uploadsPath = process.env.DATA_DIR
   ? path.join(process.env.DATA_DIR, 'uploads')
   : path.join(__dirname, '../public/uploads');
@@ -44,7 +36,7 @@ app.use('/uploads', express.static(uploadsPath));
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    message: 'BST Agro & Dairy Express API Server Running',
+    message: 'BST Agro & Dairy Express API Server Running (Supabase Only)',
     timestamp: new Date().toISOString(),
     supabase: process.env.SUPABASE_URL ? '✅ configured' : '❌ not configured',
     node: process.version
@@ -67,13 +59,13 @@ app.get('/', (req, res) => {
   });
 });
 
-// ─── 404 HANDLER (non-API, non-uploads routes) ───────────────────────────────
+// ─── 404 HANDLER ──────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
   res.status(404).json({ error: 'Endpoint not found. Access the API via /api/* endpoints.' });
 });
 
-// ─── GLOBAL ERROR HANDLER (must have 4 params for Express to treat as error middleware) ──
+// ─── GLOBAL ERROR HANDLER ─────────────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('❌ Express Global Error:', err.message, err.stack);
@@ -85,5 +77,5 @@ app.use((err, req, res, next) => {
 
 // ─── START SERVER ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🚀 BST Agro & Dairy Production Express Server running on port ${PORT}`);
+  console.log(`🚀 BST Agro Express Server running on port ${PORT}`);
 });

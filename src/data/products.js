@@ -1,4 +1,4 @@
-// Products - Empty for Production (all products loaded from API/SQLite database)
+// Products - Loaded dynamically from Supabase API
 export const PRODUCTS = [];
 
 export const BRANDS = [

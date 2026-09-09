@@ -1,4 +1,4 @@
-// Initial Customer Accounts - Empty for Production (loaded from API/SQLite)
+// Initial Customer Accounts - Loaded dynamically from Supabase API
 export const INITIAL_CUSTOMERS = [];
 
 // Helper to calculate effective price for a customer (strictly non-negative)

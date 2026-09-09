@@ -24,7 +24,7 @@ export function App() {
   const [selectedBrand, setSelectedBrand] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
 
-  // Master Products State (Loads from localStorage cache instantly, then syncs with SQLite API)
+  // Master Products State (Loads from localStorage cache instantly, then syncs with Supabase API)
   const [products, setProducts] = useState(() => {
     try {
       const cached = localStorage.getItem('bst_ecommerce_products_cache');
@@ -34,7 +34,7 @@ export function App() {
     }
   });
 
-  // Customers Database State (Loaded from Express API / SQLite)
+  // Customers Database State (Loaded from Express Supabase API)
   const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
 
   // Current Logged-In Shop Account (In-Memory state only - requires login every time site is accessed)

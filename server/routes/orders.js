@@ -1,5 +1,4 @@
 import express from 'express';
-import db from '../db.js';
 import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
 
 const router = express.Router();
@@ -10,6 +9,10 @@ router.post('/', async (req, res) => {
 
   if (!shopName || !phone || !items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Shop Name, Phone, and Order Items are required.' });
+  }
+
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({ error: 'Supabase database is not configured on backend.' });
   }
 
   const orderId = `ORD-${Date.now()}`;
@@ -29,95 +32,80 @@ router.post('/', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  try {
-    db.prepare(`
-      INSERT INTO orders (id, customerId, shopName, ownerName, phone, address, totalAmount, itemsJson, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Submitted')
-    `).run(orderId, newOrder.customerId, newOrder.shopName, newOrder.ownerName, newOrder.phone, newOrder.address, cleanTotal, itemsJsonStr);
-  } catch (e) {
-    console.warn('SQLite order insert warning:', e);
-  }
-
-  if (isSupabaseConfigured) {
-    try {
-      const { error: sbErr } = await supabase.from('orders').upsert([newOrder]);
-      if (sbErr) {
-        console.warn('Supabase order insert warning (camelCase):', sbErr.message);
-        const snakeOrder = {
-          id: orderId,
-          customer_id: newOrder.customerId,
-          shop_name: newOrder.shopName,
-          owner_name: newOrder.ownerName,
-          phone: newOrder.phone,
-          address: newOrder.address,
-          total_amount: cleanTotal,
-          items_json: itemsJsonStr,
-          status: 'Submitted',
-          created_at: newOrder.createdAt
-        };
-        await supabase.from('orders').upsert([snakeOrder]);
-      }
-    } catch (err) {
-      console.warn('Supabase order insert exception:', err.message);
-    }
-  }
-
-  const returnedOrder = {
-    ...newOrder,
-    items
+  const snakeOrder = {
+    id: orderId,
+    customer_id: newOrder.customerId,
+    shop_name: newOrder.shopName,
+    owner_name: newOrder.ownerName,
+    phone: newOrder.phone,
+    address: newOrder.address,
+    total_amount: cleanTotal,
+    items_json: itemsJsonStr,
+    status: 'Submitted',
+    created_at: newOrder.createdAt
   };
 
-  return res.json({ success: true, order: returnedOrder });
+  try {
+    let { error: sbErr1 } = await supabase.from('orders').upsert([snakeOrder]);
+    if (sbErr1) {
+      console.warn('Supabase order insert warning (snake_case):', sbErr1.message);
+      const { error: sbErr2 } = await supabase.from('orders').upsert([newOrder]);
+      if (sbErr2) {
+        return res.status(500).json({ error: `Failed to insert order: ${sbErr1.message} | ${sbErr2.message}` });
+      }
+    }
+
+    const returnedOrder = {
+      ...newOrder,
+      items
+    };
+
+    return res.json({ success: true, order: returnedOrder });
+  } catch (err) {
+    return res.status(500).json({ error: `Order insert error: ${err.message}` });
+  }
 });
 
 // Admin Get Order History
 router.get('/', async (req, res) => {
-  let sqliteOrders = [];
-  let sbOrders = [];
-
-  try {
-    sqliteOrders = db.prepare('SELECT * FROM orders ORDER BY createdAt DESC').all();
-  } catch (e) {}
-
-  if (isSupabaseConfigured) {
-    try {
-      const { data, error: ordErr } = await supabase.from('orders').select('*');
-      if (ordErr) console.warn('Supabase orders fetch error:', ordErr.message);
-      sbOrders = data || [];
-    } catch (err) {
-      console.warn('Supabase orders fetch fallback to SQLite:', err.message);
-    }
+  if (!isSupabaseConfigured) {
+    return res.status(503).json({ error: 'Supabase database is not configured on backend.' });
   }
 
-  const orderMap = new Map();
-  sqliteOrders.forEach(ord => orderMap.set(ord.id, ord));
-  sbOrders.forEach(ord => orderMap.set(ord.id, { ...orderMap.get(ord.id), ...ord }));
-
-  const mergedOrders = Array.from(orderMap.values());
-
-  const formattedOrders = mergedOrders.map(ord => {
-    let items = [];
-    try {
-      const jsonRaw = ord.itemsJson || ord.items_json || ord.items || '[]';
-      items = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : (Array.isArray(jsonRaw) ? jsonRaw : []);
-    } catch (e) {
-      items = [];
+  try {
+    const { data, error: ordErr } = await supabase.from('orders').select('*');
+    if (ordErr) {
+      return res.status(500).json({ error: `Supabase fetch orders error: ${ordErr.message}` });
     }
-    return {
-      id: ord.id,
-      customerId: ord.customerId || ord.customer_id,
-      shopName: ord.shopName || ord.shop_name || '',
-      ownerName: ord.ownerName || ord.owner_name || '',
-      phone: ord.phone || '',
-      address: ord.address || '',
-      totalAmount: ord.totalAmount !== undefined ? ord.totalAmount : ord.total_amount,
-      status: ord.status || 'Submitted',
-      createdAt: ord.createdAt || ord.created_at || new Date().toISOString(),
-      items
-    };
-  });
 
-  return res.json(formattedOrders);
+    const orders = data || [];
+
+    const formattedOrders = orders.map(ord => {
+      let items = [];
+      try {
+        const jsonRaw = ord.itemsJson || ord.items_json || ord.items || '[]';
+        items = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : (Array.isArray(jsonRaw) ? jsonRaw : []);
+      } catch (e) {
+        items = [];
+      }
+      return {
+        id: String(ord.id),
+        customerId: ord.customerId || ord.customer_id,
+        shopName: ord.shopName || ord.shop_name || '',
+        ownerName: ord.ownerName || ord.owner_name || '',
+        phone: String(ord.phone || ''),
+        address: ord.address || '',
+        totalAmount: ord.totalAmount !== undefined ? parseFloat(ord.totalAmount) || 0 : (parseFloat(ord.total_amount) || 0),
+        status: ord.status || 'Submitted',
+        createdAt: ord.createdAt || ord.created_at || new Date().toISOString(),
+        items
+      };
+    });
+
+    return res.json(formattedOrders);
+  } catch (err) {
+    return res.status(500).json({ error: `Fetch orders error: ${err.message}` });
+  }
 });
 
 export default router;
