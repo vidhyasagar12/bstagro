@@ -32,11 +32,11 @@ router.post('/login', async (req, res) => {
 
     const customer = {
       id: String(raw.id),
-      shopName: raw.shopName || raw.shop_name || raw.name || '',
-      ownerName: raw.ownerName || raw.owner_name || '',
+      shopName: raw.shopname || raw.shopName || raw.shop_name || raw.name || '',
+      ownerName: raw.ownername || raw.ownerName || raw.owner_name || '',
       phone: String(raw.phone || ''),
       pin: String(raw.pin || ''),
-      businessType: raw.businessType || raw.business_type || 'Restaurant / Hotel',
+      businessType: raw.businesstype || raw.businessType || raw.business_type || 'Restaurant / Hotel',
       address: raw.address || ''
     };
 
@@ -46,18 +46,18 @@ router.post('/login', async (req, res) => {
 
     // Fetch custom prices for this customer
     let customPricesRows = [];
-    const { data: cpData, error: cpErr } = await supabase.from('custom_prices').select('*').eq('customerId', customer.id);
+    const { data: cpData, error: cpErr } = await supabase.from('custom_prices').select('*').eq('customerid', customer.id);
     if (!cpErr && cpData) {
       customPricesRows = cpData;
     } else {
-      const { data: cpDataSnake } = await supabase.from('custom_prices').select('*').eq('customer_id', customer.id);
-      customPricesRows = cpDataSnake || [];
+      const { data: cpDataCamel } = await supabase.from('custom_prices').select('*').eq('customerId', customer.id);
+      customPricesRows = cpDataCamel || [];
     }
 
     const customPrices = {};
     customPricesRows.forEach(row => {
-      const pId = row.productId || row.product_id;
-      const pVal = row.customPrice || row.custom_price;
+      const pId = row.productid || row.productId || row.product_id;
+      const pVal = row.customprice || row.customPrice || row.custom_price;
       if (pId && pVal !== undefined) {
         customPrices[pId] = pVal;
       }
@@ -122,22 +122,23 @@ router.post('/register', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Try camelCase payload with auto column-pruning helper
-    let { error: insertErr } = await safeSupabaseUpsert('customers', newCustomer);
+    // 1. Primary lowercase payload matching PostgreSQL Supabase schema: shopname, ownername, businesstype, createdat
+    const lowerCustomer = {
+      id: newId,
+      shopname: newCustomer.shopName,
+      ownername: newCustomer.ownerName,
+      phone: cleanPhone,
+      pin: newCustomer.pin,
+      businesstype: newCustomer.businessType,
+      address: newCustomer.address,
+      createdat: newCustomer.createdAt
+    };
 
-    // 2. Fallback to snake_case payload if camelCase fails completely
+    let { error: insertErr } = await safeSupabaseUpsert('customers', lowerCustomer);
+
+    // 2. Fallback to camelCase / snake_case if lowerCustomer fails
     if (insertErr) {
-      const snakeCustomer = {
-        id: newId,
-        shop_name: newCustomer.shopName,
-        owner_name: newCustomer.ownerName,
-        phone: cleanPhone,
-        pin: newCustomer.pin,
-        business_type: newCustomer.businessType,
-        address: newCustomer.address,
-        created_at: newCustomer.createdAt
-      };
-      const { error: fallbackErr } = await safeSupabaseUpsert('customers', snakeCustomer);
+      const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
       if (fallbackErr) {
         return res.status(500).json({ error: `Failed to save customer to Supabase: ${insertErr.message}` });
       }

@@ -8,13 +8,13 @@ function normalizeCustomer(c) {
   if (!c) return null;
   return {
     id: String(c.id),
-    shopName: c.shopName || c.shop_name || c.name || '',
-    ownerName: c.ownerName || c.owner_name || '',
+    shopName: c.shopname || c.shopName || c.shop_name || c.name || '',
+    ownerName: c.ownername || c.ownerName || c.owner_name || '',
     phone: String(c.phone || ''),
     pin: String(c.pin || ''),
-    businessType: c.businessType || c.business_type || 'Restaurant / Hotel',
+    businessType: c.businesstype || c.businessType || c.business_type || 'Restaurant / Hotel',
     address: c.address || '',
-    createdAt: c.createdAt || c.created_at || new Date().toISOString()
+    createdAt: c.createdat || c.createdAt || c.created_at || new Date().toISOString()
   };
 }
 
@@ -39,9 +39,9 @@ router.get('/', async (req, res) => {
 
     const priceMapByCustomer = {};
     cpRows.forEach(row => {
-      const cId = String(row.customerId || row.customer_id);
-      const pId = String(row.productId || row.product_id);
-      const pVal = parseFloat(row.customPrice !== undefined ? row.customPrice : row.custom_price) || 0;
+      const cId = String(row.customerid || row.customerId || row.customer_id);
+      const pId = String(row.productid || row.productId || row.product_id);
+      const pVal = parseFloat(row.customprice !== undefined ? row.customprice : (row.customPrice !== undefined ? row.customPrice : row.custom_price)) || 0;
       
       if (!priceMapByCustomer[cId]) {
         priceMapByCustomer[cId] = {};
@@ -97,22 +97,22 @@ router.post('/', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    const snakeCustomer = {
+    const lowerCustomer = {
       id: newId,
-      shop_name: newCustomer.shopName,
-      owner_name: newCustomer.ownerName,
+      shopname: newCustomer.shopName,
+      ownername: newCustomer.ownerName,
       phone: cleanPhone,
       pin: newCustomer.pin,
-      business_type: newCustomer.businessType,
+      businesstype: newCustomer.businessType,
       address: newCustomer.address,
-      created_at: newCustomer.createdAt
+      createdat: newCustomer.createdAt
     };
 
-    let { error: insertErr } = await safeSupabaseUpsert('customers', snakeCustomer);
+    let { error: insertErr } = await safeSupabaseUpsert('customers', lowerCustomer);
     if (insertErr) {
       const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
       if (fallbackErr) {
-        return res.status(500).json({ error: `Failed to insert customer: ${insertErr.message} | ${fallbackErr.message}` });
+        return res.status(500).json({ error: `Failed to insert customer: ${insertErr.message}` });
       }
     }
 
@@ -139,30 +139,30 @@ router.put('/:id/custom-price', async (req, res) => {
 
   try {
     if (customPrice === undefined || customPrice === null || customPrice === '') {
-      const { error: delErr } = await supabase.from('custom_prices').delete().eq('customerId', id).eq('productId', productId);
+      const { error: delErr } = await supabase.from('custom_prices').delete().eq('customerid', id).eq('productid', productId);
       if (delErr) {
-        await supabase.from('custom_prices').delete().eq('customer_id', id).eq('product_id', productId);
+        await supabase.from('custom_prices').delete().eq('customerId', id).eq('productId', productId);
       }
     } else {
       const cleanPrice = Math.max(0, parseFloat(customPrice) || 0);
+      const cpObjLower = {
+        id: cpId,
+        customerid: id,
+        productid: productId,
+        customprice: cleanPrice
+      };
       const cpObjCamel = {
         id: cpId,
         customerId: id,
         productId,
         customPrice: cleanPrice
       };
-      const cpObjSnake = {
-        id: cpId,
-        customer_id: id,
-        product_id: productId,
-        custom_price: cleanPrice
-      };
 
-      let { error: upsertErr } = await safeSupabaseUpsert('custom_prices', cpObjSnake);
+      let { error: upsertErr } = await safeSupabaseUpsert('custom_prices', cpObjLower);
       if (upsertErr) {
         const { error: fallbackErr } = await safeSupabaseUpsert('custom_prices', cpObjCamel);
         if (fallbackErr) {
-          return res.status(500).json({ error: `Failed to save custom price: ${upsertErr.message} | ${fallbackErr.message}` });
+          return res.status(500).json({ error: `Failed to save custom price: ${upsertErr.message}` });
         }
       }
     }

@@ -32,25 +32,25 @@ router.post('/', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  const snakeOrder = {
+  const lowerOrder = {
     id: orderId,
-    customer_id: newOrder.customerId,
-    shop_name: newOrder.shopName,
-    owner_name: newOrder.ownerName,
+    customerid: newOrder.customerId,
+    shopname: newOrder.shopName,
+    ownername: newOrder.ownerName,
     phone: newOrder.phone,
     address: newOrder.address,
-    total_amount: cleanTotal,
-    items_json: itemsJsonStr,
+    totalamount: cleanTotal,
+    itemsjson: itemsJsonStr,
     status: 'Submitted',
-    created_at: newOrder.createdAt
+    createdat: newOrder.createdAt
   };
 
   try {
-    let { error: sbErr1 } = await safeSupabaseUpsert('orders', snakeOrder);
+    let { error: sbErr1 } = await safeSupabaseUpsert('orders', lowerOrder);
     if (sbErr1) {
       const { error: sbErr2 } = await safeSupabaseUpsert('orders', newOrder);
       if (sbErr2) {
-        return res.status(500).json({ error: `Failed to insert order: ${sbErr1.message} | ${sbErr2.message}` });
+        return res.status(500).json({ error: `Failed to insert order: ${sbErr1.message}` });
       }
     }
 
@@ -82,21 +82,21 @@ router.get('/', async (req, res) => {
     const formattedOrders = orders.map(ord => {
       let items = [];
       try {
-        const jsonRaw = ord.itemsJson || ord.items_json || ord.items || '[]';
+        const jsonRaw = ord.itemsjson || ord.itemsJson || ord.items_json || ord.items || '[]';
         items = typeof jsonRaw === 'string' ? JSON.parse(jsonRaw) : (Array.isArray(jsonRaw) ? jsonRaw : []);
       } catch (e) {
         items = [];
       }
       return {
         id: String(ord.id),
-        customerId: ord.customerId || ord.customer_id,
-        shopName: ord.shopName || ord.shop_name || '',
-        ownerName: ord.ownerName || ord.owner_name || '',
+        customerId: ord.customerid || ord.customerId || ord.customer_id,
+        shopName: ord.shopname || ord.shopName || ord.shop_name || '',
+        ownerName: ord.ownername || ord.ownerName || ord.owner_name || '',
         phone: String(ord.phone || ''),
         address: ord.address || '',
-        totalAmount: ord.totalAmount !== undefined ? parseFloat(ord.totalAmount) || 0 : (parseFloat(ord.total_amount) || 0),
+        totalAmount: ord.totalamount !== undefined ? parseFloat(ord.totalamount) || 0 : (parseFloat(ord.totalAmount || ord.total_amount) || 0),
         status: ord.status || 'Submitted',
-        createdAt: ord.createdAt || ord.created_at || new Date().toISOString(),
+        createdAt: ord.createdat || ord.createdAt || ord.created_at || new Date().toISOString(),
         items
       };
     });
