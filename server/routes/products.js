@@ -159,26 +159,22 @@ router.post('/', async (req, res) => {
       newProduct.isFlagship
     );
 
-    // 2. Insert into Supabase Cloud Postgres Database (Supports both lowercase and camelCase PostgreSQL schema)
+    // 2. Insert into Supabase Cloud Postgres Database (Exact PostgreSQL lowercase schema)
     if (isSupabaseConfigured) {
       const sbProduct = {
         id,
         name: cleanName,
         brand: cleanBrand,
         brandid: cleanBrandId,
-        brandId: cleanBrandId,
         category: cleanCategory,
         price: cleanPrice,
         packsize: packSize || '',
-        packSize: packSize || '',
         image: image || '',
         description: description || '',
         rating: 4.8,
         reviews: 45,
         instock: newProduct.inStock,
-        inStock: newProduct.inStock,
-        isflagship: newProduct.isFlagship,
-        isFlagship: newProduct.isFlagship
+        isflagship: newProduct.isFlagship
       };
 
       const { error: sbErr } = await supabase.from('products').upsert([sbProduct]);
@@ -253,9 +249,22 @@ router.put('/:id', async (req, res) => {
       console.warn('SQLite update error:', e);
     }
 
-    // Update Supabase
+    // Update Supabase (Exact PostgreSQL lowercase schema)
     if (isSupabaseConfigured) {
-      await supabase.from('products').upsert([updatedData]);
+      const sbUpdate = {
+        id,
+        name: updatedData.name,
+        brand: updatedData.brand,
+        brandid: updatedData.brandId,
+        category: updatedData.category,
+        price: updatedData.price,
+        packsize: updatedData.packSize,
+        image: updatedData.image,
+        description: updatedData.description,
+        instock: updatedData.inStock,
+        isflagship: updatedData.isFlagship
+      };
+      await supabase.from('products').upsert([sbUpdate]);
     }
 
     return res.json({ success: true, ...updatedData });
