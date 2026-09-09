@@ -24,8 +24,15 @@ export function App() {
   const [selectedBrand, setSelectedBrand] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
 
-  // Master Products State (Loaded from Express API / SQLite)
-  const [products, setProducts] = useState(INITIAL_PRODUCTS);
+  // Master Products State (Loads from localStorage cache instantly, then syncs with SQLite API)
+  const [products, setProducts] = useState(() => {
+    try {
+      const cached = localStorage.getItem('bst_ecommerce_products_cache');
+      return cached ? JSON.parse(cached) : INITIAL_PRODUCTS;
+    } catch {
+      return INITIAL_PRODUCTS;
+    }
+  });
 
   // Customers Database State (Loaded from Express API / SQLite)
   const [customers, setCustomers] = useState(INITIAL_CUSTOMERS);
@@ -77,6 +84,11 @@ export function App() {
       const token = localStorage.getItem('bst_agro_token');
       const data = await api.getProducts(token);
       if (Array.isArray(data)) {
+        try {
+          localStorage.setItem('bst_ecommerce_products_cache', JSON.stringify(data));
+        } catch (e) {
+          console.warn('Cache save warning:', e);
+        }
         setProducts(prevProducts => {
           if (JSON.stringify(prevProducts) === JSON.stringify(data)) {
             return prevProducts;
@@ -85,8 +97,7 @@ export function App() {
         });
       }
     } catch (err) {
-      console.warn('API unavailable, using empty catalog:', err);
-      setProducts(prev => (prev.length === 0 ? prev : []));
+      console.warn('API unavailable, maintaining current catalog:', err);
     }
   };
 

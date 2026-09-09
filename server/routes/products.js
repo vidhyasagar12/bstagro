@@ -73,8 +73,10 @@ router.post('/', (req, res) => {
     return res.status(400).json({ error: 'Product name, company/brand name, and price are required.' });
   }
 
-  const id = `prod-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const cleanBrandId = (brandId || brand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
+  const cleanName = (name || '').trim();
+  const cleanBrand = (brand || '').trim();
+  const cleanCategory = (category || 'General').trim();
+  const cleanBrandId = (brandId || cleanBrand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
   const cleanPrice = Math.max(0, parseFloat(price) || 0);
 
   try {
@@ -83,10 +85,10 @@ router.post('/', (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
-      name,
-      brand,
+      cleanName,
+      cleanBrand,
       cleanBrandId,
-      category || 'General',
+      cleanCategory,
       cleanPrice,
       packSize || '',
       image || '',
@@ -97,7 +99,7 @@ router.post('/', (req, res) => {
       isFlagship ? 1 : 0
     );
 
-    return res.status(201).json({ success: true, id, name, brand, price: cleanPrice });
+    return res.status(201).json({ success: true, id, name: cleanName, brand: cleanBrand, price: cleanPrice });
   } catch (err) {
     console.error('Error creating product:', err);
     return res.status(500).json({ error: 'Failed to create product.' });
@@ -184,8 +186,8 @@ router.delete('/:id', (req, res) => {
   }
 });
 
-// Admin: Upload Product Image (Base64)
-router.post('/upload-image', (req, res) => {
+// Admin: Upload Product Image (Supabase Storage Option 1 / Local Fallback)
+router.post('/upload-image', async (req, res) => {
   const { imageData, filename } = req.body;
 
   if (!imageData) {
@@ -193,36 +195,75 @@ router.post('/upload-image', (req, res) => {
   }
 
   try {
-    // Determine file extension from base64 header or filename
     let ext = 'png';
+    let mimeType = 'image/png';
     let base64Content = imageData;
 
     if (imageData.startsWith('data:image/')) {
       const match = imageData.match(/^data:image\/(\w+);base64,/);
       if (match) {
         ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+        mimeType = `image/${match[1]}`;
         base64Content = imageData.replace(/^data:image\/\w+;base64,/, '');
       }
     }
 
     const uniqueName = `product-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.${ext}`;
-    const uploadsDir = process.env.DATA_DIR 
-      ? path.join(process.env.DATA_DIR, 'uploads')
-      : path.resolve(__dirname, '../../public/uploads');
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-    // Ensure uploads directory exists
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    // Option 1: Supabase Cloud Storage (1 GB Free Tier)
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const imageBuffer = Buffer.from(base64Content, 'base64');
+        const uploadUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/product-images/${uniqueName}`;
+        
+        const response = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseKey}`,
+            'apiKey': supabaseKey,
+            'Content-Type': mimeType,
+            'x-upsert': 'true'
+          },
+          body: imageBuffer
+        });
+
+        if (response.ok) {
+          const publicUrl = `${supabaseUrl.replace(/\/$/, '')}/storage/v1/object/public/product-images/${uniqueName}`;
+          console.log('✅ Uploaded image to Supabase Storage (Option 1):', publicUrl);
+          return res.json({ success: true, imageUrl: publicUrl });
+        } else {
+          const errText = await response.text();
+          console.warn('⚠️ Supabase Storage upload error, falling back to local/base64:', errText);
+        }
+      } catch (supabaseErr) {
+        console.warn('⚠️ Supabase Storage exception:', supabaseErr.message);
+      }
     }
 
-    const filePath = path.join(uploadsDir, uniqueName);
-    fs.writeFileSync(filePath, base64Content, 'base64');
+    // Local Disk Storage Fallback (npm run dev)
+    try {
+      const uploadsDir = process.env.DATA_DIR 
+        ? path.join(process.env.DATA_DIR, 'uploads')
+        : path.resolve(__dirname, '../../public/uploads');
 
-    const imageUrl = `/uploads/${uniqueName}`;
-    return res.json({ success: true, imageUrl });
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+
+      const filePath = path.join(uploadsDir, uniqueName);
+      fs.writeFileSync(filePath, base64Content, 'base64');
+
+      const imageUrl = `/uploads/${uniqueName}`;
+      return res.json({ success: true, imageUrl });
+    } catch (fsErr) {
+      console.warn('⚠️ Local disk write unavailable. Using base64 Data URL fallback:', fsErr.message);
+      return res.json({ success: true, imageUrl: imageData });
+    }
   } catch (err) {
     console.error('Error uploading image:', err);
-    return res.status(500).json({ error: 'Failed to upload image.' });
+    return res.json({ success: true, imageUrl: imageData });
   }
 });
 

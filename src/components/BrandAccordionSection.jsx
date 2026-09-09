@@ -13,28 +13,26 @@ export const BrandAccordionSection = ({
   searchTerm,
   brands = []
 }) => {
-  // State for expanded brands (BST Agro expanded by default: 'bst')
-  const [expandedBrands, setExpandedBrands] = useState({
-    'bst': true
-  });
+  // State for collapsed brands (empty by default = ALL BRANDS EXPANDED so products are immediately visible!)
+  const [collapsedBrands, setCollapsedBrands] = useState({});
 
   const toggleBrand = (brandId) => {
-    setExpandedBrands(prev => ({
+    setCollapsedBrands(prev => ({
       ...prev,
       [brandId]: !prev[brandId]
     }));
   };
 
   const expandAll = () => {
-    const allExpanded = {};
-    brands.forEach(b => {
-      if (b.id !== 'all') allExpanded[b.id] = true;
-    });
-    setExpandedBrands(allExpanded);
+    setCollapsedBrands({});
   };
 
   const collapseAll = () => {
-    setExpandedBrands({});
+    const allCollapsed = {};
+    brands.forEach(b => {
+      if (b.id !== 'all') allCollapsed[b.id] = true;
+    });
+    setCollapsedBrands(allCollapsed);
   };
 
   const nonAllBrands = brands.filter(b => b.id !== 'all');
@@ -59,13 +57,14 @@ export const BrandAccordionSection = ({
 
       <div className="brand-accordion-container">
         {nonAllBrands.map(brand => {
-          const brandProducts = filteredProducts.filter(p => p.brandId === brand.id || p.brand === brand.name);
+          const brandProducts = filteredProducts.filter(p => 
+            p.brandId === brand.id || 
+            (p.brand && p.brand.trim().toLowerCase() === brand.name.trim().toLowerCase())
+          );
           if (brandProducts.length === 0) return null;
 
-          // If search or specific category filter active, auto-expand
-          const isExpanded = (searchTerm || selectedCategory !== 'All Categories') 
-            ? true 
-            : !!expandedBrands[brand.id];
+          // Expand by default unless explicitly collapsed by user
+          const isExpanded = !collapsedBrands[brand.id];
 
           return (
             <div 
