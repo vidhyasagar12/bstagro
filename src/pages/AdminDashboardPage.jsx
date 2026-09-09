@@ -412,10 +412,12 @@ export const AdminDashboardPage = ({
     }
   };
 
-  const handleDeleteProduct = async (productId) => {
+  const handleDeleteProduct = async (e, productId) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
     try {
-      await onDeleteProduct(productId);
       setDeleteConfirmId(null);
+      await onDeleteProduct(productId);
     } catch (err) {
       console.error('Error deleting product:', err);
     }
@@ -636,7 +638,8 @@ export const AdminDashboardPage = ({
                           {/* Action Buttons */}
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
                             <button 
-                              onClick={() => openEditProductModal(p)}
+                              type="button"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openEditProductModal(p); }}
                               style={{ flex: 1, background: '#FEF3C7', color: '#92400E', border: '1px solid #FCD34D', padding: '0.45rem 0.75rem', borderRadius: '8px', fontWeight: '800', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', cursor: 'pointer' }}
                             >
                               <Edit3 size={14} />
@@ -646,13 +649,15 @@ export const AdminDashboardPage = ({
                             {deleteConfirmId === p.id ? (
                               <div style={{ display: 'flex', gap: '0.3rem' }}>
                                 <button 
-                                  onClick={() => handleDeleteProduct(p.id)}
+                                  type="button"
+                                  onClick={(e) => handleDeleteProduct(e, p.id)}
                                   style={{ background: '#EF4444', color: '#fff', border: 'none', padding: '0.45rem 0.75rem', borderRadius: '8px', fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer' }}
                                 >
                                   Confirm
                                 </button>
                                 <button 
-                                  onClick={() => setDeleteConfirmId(null)}
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteConfirmId(null); }}
                                   style={{ background: '#E2E8F0', color: '#475569', border: 'none', padding: '0.45rem 0.75rem', borderRadius: '8px', fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer' }}
                                 >
                                   Cancel
@@ -660,7 +665,8 @@ export const AdminDashboardPage = ({
                               </div>
                             ) : (
                               <button 
-                                onClick={() => setDeleteConfirmId(p.id)}
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDeleteConfirmId(p.id); }}
                                 style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #FCA5A5', padding: '0.45rem 0.75rem', borderRadius: '8px', fontWeight: '800', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', cursor: 'pointer' }}
                               >
                                 <Trash2 size={14} />
