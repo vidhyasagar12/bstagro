@@ -1,5 +1,5 @@
 import express from 'express';
-import { supabase, isSupabaseConfigured, safeSupabaseUpsert } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, resilientSupabaseInsert } from '../supabaseClient.js';
 
 const router = express.Router();
 
@@ -32,6 +32,7 @@ router.post('/', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
+  // 1. Lowercase format
   const lowerOrder = {
     id: orderId,
     customerid: newOrder.customerId,
@@ -45,13 +46,25 @@ router.post('/', async (req, res) => {
     createdat: newOrder.createdAt
   };
 
+  // 2. Snake_case format
+  const snakeOrder = {
+    id: orderId,
+    customer_id: newOrder.customerId,
+    shop_name: newOrder.shopName,
+    owner_name: newOrder.ownerName,
+    phone: newOrder.phone,
+    address: newOrder.address,
+    total_amount: cleanTotal,
+    items_json: itemsJsonStr,
+    status: 'Submitted',
+    created_at: newOrder.createdAt
+  };
+
   try {
-    let { error: sbErr1 } = await safeSupabaseUpsert('orders', lowerOrder);
-    if (sbErr1) {
-      const { error: sbErr2 } = await safeSupabaseUpsert('orders', newOrder);
-      if (sbErr2) {
-        return res.status(500).json({ error: `Failed to insert order: ${sbErr1.message}` });
-      }
+    const { error: sbErr } = await resilientSupabaseInsert('orders', [lowerOrder, snakeOrder, newOrder]);
+
+    if (sbErr) {
+      return res.status(500).json({ error: `Failed to insert order into Supabase: ${sbErr.message}` });
     }
 
     const returnedOrder = {

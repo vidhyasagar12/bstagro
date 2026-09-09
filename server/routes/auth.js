@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { supabase, isSupabaseConfigured, safeSupabaseUpsert } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, resilientSupabaseInsert } from '../supabaseClient.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'bst-agro-secret-key-2026';
@@ -44,22 +44,23 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid Phone Number or 4-Digit Security PIN.' });
     }
 
-    // Fetch custom prices for this customer
+    // Fetch custom prices for this customer (checking customerid, customerId, and customer_id)
     let customPricesRows = [];
-    const { data: cpData, error: cpErr } = await supabase.from('custom_prices').select('*').eq('customerid', customer.id);
-    if (!cpErr && cpData) {
+    const { data: cpData, error: cpErr } = await supabase.from('custom_prices').select('*').or(`customerid.eq.${customer.id},customerId.eq.${customer.id},customer_id.eq.${customer.id}`);
+    
+    if (!cpErr && cpData && cpData.length > 0) {
       customPricesRows = cpData;
     } else {
-      const { data: cpDataCamel } = await supabase.from('custom_prices').select('*').eq('customerId', customer.id);
-      customPricesRows = cpDataCamel || [];
+      const { data: cpDataAll } = await supabase.from('custom_prices').select('*');
+      customPricesRows = (cpDataAll || []).filter(cp => String(cp.customerid || cp.customerId || cp.customer_id) === String(customer.id));
     }
 
     const customPrices = {};
     customPricesRows.forEach(row => {
       const pId = row.productid || row.productId || row.product_id;
-      const pVal = row.customprice || row.customPrice || row.custom_price;
+      const pVal = row.customprice !== undefined ? row.customprice : (row.customPrice !== undefined ? row.customPrice : row.custom_price);
       if (pId && pVal !== undefined) {
-        customPrices[pId] = pVal;
+        customPrices[pId] = parseFloat(pVal) || 0;
       }
     });
 
@@ -122,7 +123,7 @@ router.post('/register', async (req, res) => {
       createdAt: new Date().toISOString()
     };
 
-    // 1. Primary lowercase payload matching PostgreSQL Supabase schema: shopname, ownername, businesstype, createdat
+    // 1. Lowercase PostgreSQL format
     const lowerCustomer = {
       id: newId,
       shopname: newCustomer.shopName,
@@ -134,14 +135,23 @@ router.post('/register', async (req, res) => {
       createdat: newCustomer.createdAt
     };
 
-    let { error: insertErr } = await safeSupabaseUpsert('customers', lowerCustomer);
+    // 2. Snake_case format
+    const snakeCustomer = {
+      id: newId,
+      shop_name: newCustomer.shopName,
+      owner_name: newCustomer.ownerName,
+      phone: cleanPhone,
+      pin: newCustomer.pin,
+      business_type: newCustomer.businessType,
+      address: newCustomer.address,
+      created_at: newCustomer.createdAt
+    };
 
-    // 2. Fallback to camelCase / snake_case if lowerCustomer fails
+    // Try all 3 schema formats resiliently
+    const { error: insertErr } = await resilientSupabaseInsert('customers', [lowerCustomer, snakeCustomer, newCustomer]);
+
     if (insertErr) {
-      const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
-      if (fallbackErr) {
-        return res.status(500).json({ error: `Failed to save customer to Supabase: ${insertErr.message}` });
-      }
+      return res.status(500).json({ error: `Failed to save customer to Supabase: ${insertErr.message}` });
     }
 
     const token = jwt.sign(

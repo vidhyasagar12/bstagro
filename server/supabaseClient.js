@@ -20,8 +20,7 @@ if (isSupabaseConfigured) {
 }
 
 /**
- * Resilient Supabase Upsert Helper
- * Automatically prunes non-existent columns if the target Supabase table schema lacks optional fields.
+ * Single-payload resilient upsert with automatic column pruning
  */
 export async function safeSupabaseUpsert(table, record) {
   if (!supabase) return { data: null, error: new Error('Supabase client not initialized') };
@@ -32,7 +31,6 @@ export async function safeSupabaseUpsert(table, record) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const { data, error } = await supabase.from(table).upsert([currentRecord]);
     if (!error) {
-      console.log(`✅ safeSupabaseUpsert succeeded for table '${table}'!`);
       return { data, error: null };
     }
 
@@ -50,4 +48,39 @@ export async function safeSupabaseUpsert(table, record) {
   }
 
   return { data: null, error: lastError || new Error('Exhausted column pruning retries for Supabase upsert.') };
+}
+
+/**
+ * Universal Multi-Casing Resilient Supabase Insert/Upsert Engine
+ * Tries multiple payload column casing formats (lowercase, snake_case, camelCase)
+ * and automatically prunes non-existent columns from the Supabase schema.
+ */
+export async function resilientSupabaseInsert(table, payloads = []) {
+  if (!supabase) return { data: null, error: new Error('Supabase client not initialized') };
+
+  let lastError = null;
+
+  for (const rawPayload of payloads) {
+    let currentRecord = { ...rawPayload };
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const { data, error } = await supabase.from(table).upsert([currentRecord]);
+      if (!error) {
+        return { data, error: null };
+      }
+
+      lastError = error;
+
+      // Check if error is due to a missing column in Supabase table schema
+      const missingColMatch = error.message.match(/Could not find the '([^']+)' column/i);
+      if (missingColMatch && missingColMatch[1]) {
+        delete currentRecord[missingColMatch[1]];
+      } else {
+        // Try the next casing payload if this one hits constraint error
+        break;
+      }
+    }
+  }
+
+  return { data: null, error: lastError || new Error(`Failed to insert into '${table}' across all schema casing variants.`) };
 }

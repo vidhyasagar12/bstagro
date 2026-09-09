@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { supabase, isSupabaseConfigured } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, resilientSupabaseInsert } from '../supabaseClient.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'bst-agro-secret-key-2026';
@@ -21,20 +21,20 @@ router.get('/', async (req, res, next) => {
     }
 
     const formattedProducts = (data || []).map(p => {
-      const bId = p.brandId || p.brandid || (p.brand ? p.brand.toLowerCase().replace(/[^a-z0-9]/g, '') : 'gen');
-      const img = p.image || p.imageUrl || '';
-      const inStk = p.inStock !== undefined ? p.inStock : (p.instock !== undefined ? p.instock : 1);
-      const isFlag = p.isFlagship !== undefined ? p.isFlagship : (p.isflagship !== undefined ? p.isflagship : 0);
+      const bId = p.brandid || p.brandId || p.brand_id || (p.brand ? p.brand.toLowerCase().replace(/[^a-z0-9]/g, '') : 'gen');
+      const img = p.image || p.imageUrl || p.image_url || '';
+      const inStk = p.instock !== undefined ? p.instock : (p.inStock !== undefined ? p.inStock : (p.in_stock !== undefined ? p.in_stock : 1));
+      const isFlag = p.isflagship !== undefined ? p.isflagship : (p.isFlagship !== undefined ? p.isFlagship : (p.is_flagship !== undefined ? p.is_flagship : 0));
 
       return {
         ...p,
-        id: p.id,
+        id: String(p.id),
         name: p.name,
         brand: p.brand,
         brandId: bId,
         category: p.category,
         price: parseFloat(p.price) || 0,
-        packSize: p.packSize || p.packsize || '',
+        packSize: p.packsize || p.packSize || p.pack_size || '',
         image: img,
         imageUrl: img,
         description: p.description || '',
@@ -63,13 +63,15 @@ router.get('/', async (req, res, next) => {
 
     if (customerId) {
       const { data: cpData } = await supabase.from('custom_prices').select('*');
-      const customPrices = (cpData || []).filter(cp => (cp.customerId || cp.customerid) === customerId);
+      const customPrices = (cpData || []).filter(cp => String(cp.customerid || cp.customerId || cp.customer_id) === String(customerId));
 
       const priceMap = {};
       customPrices.forEach(cp => {
-        const pId = cp.productId || cp.productid;
-        const cPrice = cp.customPrice || cp.customprice;
-        priceMap[pId] = cPrice;
+        const pId = cp.productid || cp.productId || cp.product_id;
+        const cPrice = cp.customprice !== undefined ? cp.customprice : (cp.customPrice !== undefined ? cp.customPrice : cp.custom_price);
+        if (pId && cPrice !== undefined) {
+          priceMap[pId] = parseFloat(cPrice) || 0;
+        }
       });
 
       const evaluatedProducts = formattedProducts.map(p => {
@@ -108,7 +110,7 @@ router.post('/', async (req, res, next) => {
     const cleanBrandId = (brandId || cleanBrand.toLowerCase().replace(/[^a-z0-9]/g, '')).substring(0, 30);
     const cleanPrice = Math.max(0, parseFloat(price) || 0);
 
-    const sbProduct = {
+    const lowerProduct = {
       id,
       name: cleanName,
       brand: cleanBrand,
@@ -124,14 +126,46 @@ router.post('/', async (req, res, next) => {
       isflagship: isFlagship ? 1 : 0
     };
 
-    const { data, error } = await supabase.from('products').upsert([sbProduct]).select();
+    const snakeProduct = {
+      id,
+      name: cleanName,
+      brand: cleanBrand,
+      brand_id: cleanBrandId,
+      category: cleanCategory,
+      price: cleanPrice,
+      pack_size: packSize || '',
+      image: image || '',
+      description: description || '',
+      rating: 4.8,
+      reviews: 45,
+      in_stock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
+      is_flagship: isFlagship ? 1 : 0
+    };
+
+    const camelProduct = {
+      id,
+      name: cleanName,
+      brand: cleanBrand,
+      brandId: cleanBrandId,
+      category: cleanCategory,
+      price: cleanPrice,
+      packSize: packSize || '',
+      image: image || '',
+      description: description || '',
+      rating: 4.8,
+      reviews: 45,
+      inStock: inStock !== undefined ? (inStock ? 1 : 0) : 1,
+      isFlagship: isFlagship ? 1 : 0
+    };
+
+    const { error } = await resilientSupabaseInsert('products', [lowerProduct, snakeProduct, camelProduct]);
 
     if (error) {
       console.error('Supabase POST /products error:', error);
-      return res.status(400).json({ error: `Supabase Error: ${error.message}`, details: error.details || error.hint });
+      return res.status(400).json({ error: `Supabase Error: ${error.message}` });
     }
 
-    console.log('✅ Product saved to Supabase:', data);
+    console.log('✅ Product saved to Supabase:', id);
     return res.status(201).json({
       success: true,
       id,
@@ -144,8 +178,8 @@ router.post('/', async (req, res, next) => {
       image: image || '',
       imageUrl: image || '',
       description: description || '',
-      inStock: Boolean(sbProduct.instock),
-      isFlagship: Boolean(sbProduct.isflagship)
+      inStock: Boolean(inStock),
+      isFlagship: Boolean(isFlagship)
     });
   } catch (err) {
     next(err);
@@ -192,24 +226,52 @@ router.put('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Product not found in Supabase database.' });
     }
 
-    const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : (existing.brandid || existing.brandId));
+    const cleanBrandId = brandId || (brand ? brand.toLowerCase().replace(/[^a-z0-9]/g, '') : (existing.brandid || existing.brandId || existing.brand_id));
     const cleanPrice = price !== undefined ? Math.max(0, parseFloat(price) || 0) : parseFloat(existing.price);
 
-    const sbUpdate = {
+    const lowerProduct = {
       id,
       name: name || existing.name,
       brand: brand || existing.brand,
       brandid: cleanBrandId,
       category: category || existing.category,
       price: cleanPrice,
-      packsize: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || ''),
+      packsize: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || existing.pack_size || ''),
       image: image !== undefined ? image : (existing.image || ''),
       description: description !== undefined ? description : (existing.description || ''),
       instock: inStock !== undefined ? (inStock ? 1 : 0) : (existing.instock !== undefined ? existing.instock : 1),
       isflagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : (existing.isflagship !== undefined ? existing.isflagship : 0)
     };
 
-    const { data, error } = await supabase.from('products').upsert([sbUpdate]).select();
+    const snakeProduct = {
+      id,
+      name: name || existing.name,
+      brand: brand || existing.brand,
+      brand_id: cleanBrandId,
+      category: category || existing.category,
+      price: cleanPrice,
+      pack_size: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || existing.pack_size || ''),
+      image: image !== undefined ? image : (existing.image || ''),
+      description: description !== undefined ? description : (existing.description || ''),
+      in_stock: inStock !== undefined ? (inStock ? 1 : 0) : (existing.instock !== undefined ? existing.instock : 1),
+      is_flagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : (existing.isflagship !== undefined ? existing.isflagship : 0)
+    };
+
+    const camelProduct = {
+      id,
+      name: name || existing.name,
+      brand: brand || existing.brand,
+      brandId: cleanBrandId,
+      category: category || existing.category,
+      price: cleanPrice,
+      packSize: packSize !== undefined ? packSize : (existing.packsize || existing.packSize || existing.pack_size || ''),
+      image: image !== undefined ? image : (existing.image || ''),
+      description: description !== undefined ? description : (existing.description || ''),
+      inStock: inStock !== undefined ? (inStock ? 1 : 0) : (existing.instock !== undefined ? existing.instock : 1),
+      isFlagship: isFlagship !== undefined ? (isFlagship ? 1 : 0) : (existing.isflagship !== undefined ? existing.isflagship : 0)
+    };
+
+    const { error } = await resilientSupabaseInsert('products', [lowerProduct, snakeProduct, camelProduct]);
 
     if (error) {
       console.error('Supabase PUT /products error:', error);
@@ -218,11 +280,18 @@ router.put('/:id', async (req, res, next) => {
 
     return res.json({
       success: true,
-      ...sbUpdate,
+      id,
+      name: lowerProduct.name,
+      brand: lowerProduct.brand,
       brandId: cleanBrandId,
-      packSize: sbUpdate.packsize,
-      inStock: Boolean(sbUpdate.instock),
-      isFlagship: Boolean(sbUpdate.isflagship)
+      category: lowerProduct.category,
+      price: cleanPrice,
+      packSize: lowerProduct.packsize,
+      image: lowerProduct.image,
+      imageUrl: lowerProduct.image,
+      description: lowerProduct.description,
+      inStock: Boolean(lowerProduct.instock),
+      isFlagship: Boolean(lowerProduct.isflagship)
     });
   } catch (err) {
     next(err);
@@ -243,14 +312,13 @@ router.delete('/:id', async (req, res) => {
   }
 
   try {
-    // 1. Delete associated custom prices first (PostgreSQL lowercase column name)
-    const cpResult = await supabase.from('custom_prices').delete().eq('productid', cleanId);
-    if (cpResult.error) {
-      console.warn('⚠️ custom_prices delete warning (non-fatal):', cpResult.error.message);
-    }
+    // 1. Delete associated custom prices across all column naming variants
+    await supabase.from('custom_prices').delete().eq('productid', cleanId);
+    await supabase.from('custom_prices').delete().eq('productId', cleanId);
+    await supabase.from('custom_prices').delete().eq('product_id', cleanId);
 
-    // 2. Delete the product itself and select returned rows
-    const prodResult = await supabase.from('products').delete().eq('id', cleanId).select();
+    // 2. Delete the product itself
+    const prodResult = await supabase.from('products').delete().eq('id', cleanId);
 
     if (prodResult.error) {
       console.error('❌ Supabase product delete error:', prodResult.error);
@@ -264,7 +332,6 @@ router.delete('/:id', async (req, res) => {
     return res.status(500).json({ error: `Server error during delete: ${err.message}` });
   }
 });
-
 
 // ─── UPLOAD PRODUCT IMAGE (Base64 → Supabase Storage) ────────────────────────
 router.post('/upload-image', async (req, res, next) => {

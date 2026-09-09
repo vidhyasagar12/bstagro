@@ -1,9 +1,9 @@
 import express from 'express';
-import { supabase, isSupabaseConfigured, safeSupabaseUpsert } from '../supabaseClient.js';
+import { supabase, isSupabaseConfigured, resilientSupabaseInsert } from '../supabaseClient.js';
 
 const router = express.Router();
 
-// Helper to normalize customer record from Supabase
+// Helper to normalize customer record from any Supabase column naming convention
 function normalizeCustomer(c) {
   if (!c) return null;
   return {
@@ -43,10 +43,12 @@ router.get('/', async (req, res) => {
       const pId = String(row.productid || row.productId || row.product_id);
       const pVal = parseFloat(row.customprice !== undefined ? row.customprice : (row.customPrice !== undefined ? row.customPrice : row.custom_price)) || 0;
       
-      if (!priceMapByCustomer[cId]) {
-        priceMapByCustomer[cId] = {};
+      if (cId && pId) {
+        if (!priceMapByCustomer[cId]) {
+          priceMapByCustomer[cId] = {};
+        }
+        priceMapByCustomer[cId][pId] = pVal;
       }
-      priceMapByCustomer[cId][pId] = pVal;
     });
 
     const fullCustomers = customers.map(c => ({
@@ -108,12 +110,21 @@ router.post('/', async (req, res) => {
       createdat: newCustomer.createdAt
     };
 
-    let { error: insertErr } = await safeSupabaseUpsert('customers', lowerCustomer);
+    const snakeCustomer = {
+      id: newId,
+      shop_name: newCustomer.shopName,
+      owner_name: newCustomer.ownerName,
+      phone: cleanPhone,
+      pin: newCustomer.pin,
+      business_type: newCustomer.businessType,
+      address: newCustomer.address,
+      created_at: newCustomer.createdAt
+    };
+
+    const { error: insertErr } = await resilientSupabaseInsert('customers', [lowerCustomer, snakeCustomer, newCustomer]);
+
     if (insertErr) {
-      const { error: fallbackErr } = await safeSupabaseUpsert('customers', newCustomer);
-      if (fallbackErr) {
-        return res.status(500).json({ error: `Failed to insert customer: ${insertErr.message}` });
-      }
+      return res.status(500).json({ error: `Failed to insert customer into Supabase: ${insertErr.message}` });
     }
 
     return res.json({ success: true, customer: { ...newCustomer, customPrices: {} } });
@@ -139,10 +150,10 @@ router.put('/:id/custom-price', async (req, res) => {
 
   try {
     if (customPrice === undefined || customPrice === null || customPrice === '') {
-      const { error: delErr } = await supabase.from('custom_prices').delete().eq('customerid', id).eq('productid', productId);
-      if (delErr) {
-        await supabase.from('custom_prices').delete().eq('customerId', id).eq('productId', productId);
-      }
+      // Delete across all column naming variants
+      await supabase.from('custom_prices').delete().eq('customerid', id).eq('productid', productId);
+      await supabase.from('custom_prices').delete().eq('customerId', id).eq('productId', productId);
+      await supabase.from('custom_prices').delete().eq('customer_id', id).eq('product_id', productId);
     } else {
       const cleanPrice = Math.max(0, parseFloat(customPrice) || 0);
       const cpObjLower = {
@@ -151,6 +162,12 @@ router.put('/:id/custom-price', async (req, res) => {
         productid: productId,
         customprice: cleanPrice
       };
+      const cpObjSnake = {
+        id: cpId,
+        customer_id: id,
+        product_id: productId,
+        custom_price: cleanPrice
+      };
       const cpObjCamel = {
         id: cpId,
         customerId: id,
@@ -158,12 +175,10 @@ router.put('/:id/custom-price', async (req, res) => {
         customPrice: cleanPrice
       };
 
-      let { error: upsertErr } = await safeSupabaseUpsert('custom_prices', cpObjLower);
+      const { error: upsertErr } = await resilientSupabaseInsert('custom_prices', [cpObjLower, cpObjSnake, cpObjCamel]);
+
       if (upsertErr) {
-        const { error: fallbackErr } = await safeSupabaseUpsert('custom_prices', cpObjCamel);
-        if (fallbackErr) {
-          return res.status(500).json({ error: `Failed to save custom price: ${upsertErr.message}` });
-        }
+        return res.status(500).json({ error: `Failed to save custom price: ${upsertErr.message}` });
       }
     }
 
