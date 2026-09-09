@@ -126,7 +126,7 @@ export const BrandAccordionSection = ({
 
                   <div className="product-grid">
                     {brandProducts.map(product => {
-                      const inCart = cartItems.find(item => item.id === product.id);
+                      const inCart = cartItems.find(item => String(item.id) === String(product.id));
                       return (
                         <ProductCard 
                           key={product.id}

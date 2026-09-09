@@ -45,27 +45,27 @@ export const HeroBanner = ({
         <div className="hero-left">
           <div className="hero-badge">
             <Award size={16} color="#FACC15" />
-            <span>OUR OWN FACTORY FLAGSHIP BRAND</span>
+            <span>DIRECT FACTORY FLAGSHIP DAIRY</span>
           </div>
 
           <h1>BST Fresh Cottage Paneer <span>100% Pure & Authentic</span></h1>
 
           <p className="hero-subtitle">
-            Processed daily at our own BST Agro & Dairy plant. Soft texture, high protein, rich milk taste — trusted by households, hotels, and top commercial kitchens.
+            Processed daily at our state-of-the-art BST Agro & Dairy plant. Ultra-soft texture, high protein, and rich natural milk taste — trusted by households, top hotels, and commercial kitchens across Telangana.
           </p>
 
           <div className="hero-features">
             <div className="hero-feature-item">
-              <CheckCircle2 size={18} color="#FACC15" />
-              <span>100% Milk Pure Paneer</span>
+              <CheckCircle2 size={16} color="#FACC15" />
+              <span>100% Pure Milk Paneer</span>
             </div>
             <div className="hero-feature-item">
-              <CheckCircle2 size={18} color="#FACC15" />
-              <span>Direct Factory Wholesale & Retail</span>
+              <CheckCircle2 size={16} color="#FACC15" />
+              <span>Wholesale & Retail Direct</span>
             </div>
             <div className="hero-feature-item">
-              <CheckCircle2 size={18} color="#FACC15" />
-              <span>Same-Day Fresh Dispatch</span>
+              <CheckCircle2 size={16} color="#FACC15" />
+              <span>Daily Morning Dispatch</span>
             </div>
           </div>
 
@@ -74,7 +74,7 @@ export const HeroBanner = ({
               onClick={() => setSelectedBrand('bst')}
               className="cta-primary-btn"
             >
-              ⭐ Shop All BST Dairy Products
+              ⭐ Explore BST Dairy Range
             </button>
 
             <a 
@@ -84,7 +84,7 @@ export const HeroBanner = ({
               className="cta-wa-btn"
             >
               <MessageCircle size={18} />
-              <span>Order BST Paneer on WhatsApp</span>
+              <span>Order Paneer on WhatsApp</span>
             </a>
           </div>
         </div>

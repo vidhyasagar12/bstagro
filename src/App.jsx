@@ -17,7 +17,7 @@ import { PRODUCTS as INITIAL_PRODUCTS, CATEGORIES, BRANDS } from './data/product
 import { INITIAL_CUSTOMERS, getEffectivePrice } from './data/customers';
 import { api } from './services/api';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, ShoppingBag, ArrowRight } from 'lucide-react';
 import './App.css';
 
 export function App() {
@@ -266,28 +266,29 @@ export function App() {
     });
   }, [products, selectedBrand, selectedCategory, searchTerm, selectedBrandObj]);
 
-  // Cart Actions
+  // Cart Actions (Robust String ID Matching & Auto Drawer Open)
   const handleAddToCart = (product) => {
     const effectivePrice = getEffectivePrice(product, currentCustomer);
     setCartItems(prev => {
-      const exists = prev.find(item => item.id === product.id);
+      const exists = prev.find(item => String(item.id) === String(product.id));
       if (exists) {
-        return prev.map(item => item.id === product.id ? { ...item, qty: item.qty + 1, price: effectivePrice } : item);
+        return prev.map(item => String(item.id) === String(product.id) ? { ...item, qty: item.qty + 1, price: effectivePrice } : item);
       }
       return [...prev, { ...product, price: effectivePrice, qty: 1 }];
     });
+    setIsCartOpen(true);
   };
 
   const handleUpdateQty = (id, newQty) => {
     if (newQty <= 0) {
       handleRemoveItem(id);
     } else {
-      setCartItems(prev => prev.map(item => item.id === id ? { ...item, qty: newQty } : item));
+      setCartItems(prev => prev.map(item => String(item.id) === String(id) ? { ...item, qty: newQty } : item));
     }
   };
 
   const handleRemoveItem = (id) => {
-    setCartItems(prev => prev.filter(item => item.id !== id));
+    setCartItems(prev => prev.filter(item => String(item.id) !== String(id)));
   };
 
   const handleClearCart = () => {
@@ -569,7 +570,7 @@ export function App() {
             ) : (
               <div className="product-grid">
                 {filteredProducts.map(product => {
-                  const inCart = cartItems.find(item => item.id === product.id);
+                  const inCart = cartItems.find(item => String(item.id) === String(product.id));
                   return (
                     <ProductCard 
                       key={product.id}
@@ -654,6 +655,26 @@ export function App() {
         onLoginSuccess={(customer) => setCurrentCustomer(customer)}
         onRegisterNewCustomer={handleAddCustomer}
       />
+
+      {/* Sticky Floating Mobile Bottom Cart Bar */}
+      {cartCount > 0 && !isCartOpen && (
+        <div className="mobile-floating-cart-bar" onClick={() => setIsCartOpen(true)}>
+          <div className="mobile-cart-bar-left">
+            <div className="cart-icon-pill">
+              <ShoppingBag size={18} />
+              <span>{cartCount}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+              <span style={{ fontSize: '0.72rem', opacity: 0.85, textTransform: 'uppercase' }}>Cart Total</span>
+              <span style={{ fontSize: '1rem', fontWeight: 900 }}>₹{cartTotal.toLocaleString()}</span>
+            </div>
+          </div>
+          <div className="mobile-cart-bar-right">
+            <span>VIEW CART</span>
+            <ArrowRight size={16} />
+          </div>
+        </div>
+      )}
 
       {/* Site-Wide Floating WhatsApp Chat Widget */}
       <FloatingWhatsAppBtn />

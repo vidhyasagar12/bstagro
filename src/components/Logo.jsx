@@ -69,11 +69,11 @@ export const Logo = ({ size = 48, showText = true }) => {
       </svg>
 
       {showText && (
-        <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
-          <span style={{ fontSize: '1.3rem', fontWeight: '900', color: '#056835', lineHeight: 1.15, letterSpacing: '-0.3px' }}>
+        <div className="logo-text-group" style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', whiteSpace: 'nowrap', flexShrink: 0 }}>
+          <span className="logo-main-text" style={{ fontSize: '1.25rem', fontWeight: '900', color: '#056835', lineHeight: 1.15, letterSpacing: '-0.3px', whiteSpace: 'nowrap' }}>
             BST <span style={{ color: '#D97706' }}>AGRO & DAIRY</span>
           </span>
-          <span style={{ fontSize: '0.74rem', fontWeight: '800', color: '#64748B', letterSpacing: '0.5px', marginTop: '2px' }}>
+          <span className="logo-sub-text" style={{ fontSize: '0.72rem', fontWeight: '800', color: '#64748B', letterSpacing: '0.5px', marginTop: '2px', whiteSpace: 'nowrap' }}>
             Wholesale & Retail Portal
           </span>
         </div>
